@@ -1,0 +1,50 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          script: |
+            set -e
+
+            # Clone repo if first time, otherwise pull
+            if [ ! -d /opt/attendtrack ]; then
+              git clone https://github.com/${{ github.repository }}.git /opt/attendtrack
+            fi
+
+            cd /opt/attendtrack
+            git pull origin main
+
+            # Write .env from GitHub secrets
+            cat > .env << 'EOF'
+            POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            ZK_IP=${{ secrets.ZK_IP }}
+            ZK_PORT=4370
+            ZK_TIMEOUT=10000
+            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
+            EOF
+
+            echo "Building and restarting containers..."
+            docker compose up -d --build --remove-orphans
+
+            echo "Cleaning up unused images..."
+            docker image prune -f
+
+            echo "Deployment complete."
