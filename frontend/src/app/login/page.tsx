@@ -127,11 +127,6 @@ export default function LoginPage() {
           </form>
         </Paper>
 
-        <Text fz={12} c="#475569" ta="center" mt={20}>
-          Default: <Text span c="#94a3b8" fw={500}>superadmin</Text>
-          {' / '}
-          <Text span c="#94a3b8" fw={500}>Admin@123</Text>
-        </Text>
       </Box>
     </Box>
   );
