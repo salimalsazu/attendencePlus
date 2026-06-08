@@ -2,17 +2,21 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# Install all deps including devDeps (prisma CLI needed for generate + db push)
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 
+# Generate Prisma client
 COPY prisma ./prisma
+COPY prisma.config.ts ./
 RUN npx prisma generate
 
+# Copy rest of source
 COPY . .
 
 COPY entrypoint.sh ./
 RUN chmod +x entrypoint.sh
 
-EXPOSE 3000
+EXPOSE 4000
 
 ENTRYPOINT ["./entrypoint.sh"]

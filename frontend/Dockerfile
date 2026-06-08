@@ -7,9 +7,13 @@ ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --legacy-peer-deps
 
 COPY . .
+
+# Ensure public folder exists (required for standalone copy)
+RUN mkdir -p public
+
 RUN npm run build
 
 # ── Stage 2: run ─────────────────────────────────────────────────────────────
