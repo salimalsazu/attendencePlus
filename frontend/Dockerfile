@@ -1,5 +1,6 @@
 # ── Stage 1: build ──────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
+RUN apk add --no-cache tzdata
 
 WORKDIR /app
 
@@ -18,6 +19,7 @@ RUN npm run build
 
 # ── Stage 2: run ─────────────────────────────────────────────────────────────
 FROM node:20-alpine AS runner
+RUN apk add --no-cache tzdata
 
 WORKDIR /app
 ENV NODE_ENV=production

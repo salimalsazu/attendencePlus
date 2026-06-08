@@ -1,5 +1,7 @@
 FROM node:20-alpine
 
+RUN apk add --no-cache tzdata
+
 WORKDIR /app
 
 # Install all deps including devDeps (prisma CLI needed for generate + db push)
