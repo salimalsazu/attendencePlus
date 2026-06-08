@@ -1,0 +1,71 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Employee {
+  id           Int      @id @default(autoincrement())
+  deviceUserId String   @unique
+  name         String
+  role         String?
+  department   String?
+  designation  String?
+  createdAt    DateTime @default(now())
+}
+
+model AttendanceLog {
+  id           Int      @id @default(autoincrement())
+  deviceUserId String
+  punchTime    DateTime
+  punchType    Int      @default(0)
+  source       String   @default("device")
+  note         String?
+  createdAt    DateTime @default(now())
+
+  @@unique([deviceUserId, punchTime])
+  @@index([punchTime])
+  @@index([deviceUserId])
+  @@index([source])
+}
+
+model SyncLog {
+  id          Int      @id @default(autoincrement())
+  syncedAt    DateTime @default(now())
+  recordCount Int
+  status      String
+  message     String?
+}
+
+model AppSettings {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  password  String
+  name      String
+  role      String   @default("admin") // "admin" | "super_admin"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Device {
+  id            Int       @id @default(autoincrement())
+  deviceId      String    @unique
+  name          String
+  location      String?
+  branch        String?
+  ipAddress     String?
+  status        String    @default("offline")
+  batteryHealth Int?
+  lastSyncTime  DateTime?
+  recordsSynced Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
