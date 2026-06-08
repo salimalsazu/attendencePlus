@@ -9,6 +9,7 @@ services:
       POSTGRES_DB: attendance_db
       POSTGRES_USER: attend_user
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: Asia/Dhaka
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -31,6 +32,7 @@ services:
       ZK_PORT: ${ZK_PORT:-4370}
       ZK_TIMEOUT: ${ZK_TIMEOUT:-10000}
       PORT: 4000
+      TZ: Asia/Dhaka
     depends_on:
       postgres:
         condition: service_healthy
@@ -44,6 +46,8 @@ services:
     restart: unless-stopped
     ports:
       - "3001:3001"
+    environment:
+      TZ: Asia/Dhaka
     depends_on:
       - backend
 
