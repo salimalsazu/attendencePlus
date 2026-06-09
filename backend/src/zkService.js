@@ -66,13 +66,20 @@ async function syncAttendance() {
       });
     }
 
-    // --- Critical: read a FRESH, CONSISTENT snapshot of the attendance log ---
-    // 1. disableDevice(): freezes the device so it commits pending data and
-    //    stops mutating the log while we read — without this, getAttendances()
-    //    can return a stale cached snapshot (the old-records-only bug after reboot).
-    // 2. CMD_REFRESHDATA: forces the device to refresh its internal data buffers.
-    // 3. getInfo(): logCounts tells us how many records the device actually holds,
-    //    so we can compare against what we parse and detect truncated reads.
+    // getInfo() — logCounts is the device's own count of stored attendance
+    // records. Queried BEFORE disableDevice (disabling can break the size query).
+    // This is the ground truth: if logCounts >> what getAttendances returns,
+    // the bulk read is truncating.
+    try {
+      const info = await zk.getInfo();
+      ts(`Device info — logCounts: ${info.logCounts}, capacity: ${info.logCapacity}, users: ${info.userCounts}`);
+    } catch (e) {
+      ts(`Warning: getInfo failed (${e?.message || JSON.stringify(e)}).`);
+    }
+
+    // --- Read a FRESH, CONSISTENT snapshot of the attendance log ---
+    // disableDevice(): freezes the device so it commits pending data and stops
+    // mutating the log while we read. CMD_REFRESHDATA: flush internal buffers.
     try {
       await zk.disableDevice();
       deviceDisabled = true;
@@ -88,16 +95,20 @@ async function syncAttendance() {
       ts(`Warning: refreshData failed (${e?.message}); continuing anyway.`);
     }
 
-    try {
-      const info = await zk.getInfo();
-      ts(`Device info — logCounts: ${info.logCounts}, capacity: ${info.logCapacity}, users: ${info.userCounts}`);
-    } catch (e) {
-      ts(`Warning: getInfo failed (${e?.message}).`);
-    }
-
     ts('Fetching attendance logs (full read)...');
-    const { data: logs } = await zk.getAttendances();
-    ts(`Device returned ${logs.length} total record(s).`);
+    // The progress callback receives (bytesReceivedSoFar, deviceReportedTotalSize).
+    // We capture the device-reported total size to detect chunk truncation:
+    // if totalSize/40 (record size) >> records we parsed, the multi-chunk read
+    // dropped data past the first 65,472-byte chunk.
+    let reportedSize = 0;
+    const { data: logs, err: readErr } = await zk.getAttendances((recvBytes, totalSize) => {
+      if (totalSize > reportedSize) reportedSize = totalSize;
+    });
+    ts(`Device returned ${logs.length} record(s). Device-reported payload size: ${reportedSize} bytes (~${Math.floor(reportedSize / 40)} records).`);
+    if (readErr) ts(`*** READ WAS TRUNCATED/ERRORED: ${readErr.message || readErr}. Records past the first chunk were lost. ***`);
+    if (reportedSize > 0 && Math.floor(reportedSize / 40) > logs.length + 5) {
+      ts(`*** TRUNCATION CONFIRMED: device has ~${Math.floor(reportedSize / 40)} records but only ${logs.length} were read (chunk-boundary bug). ***`);
+    }
 
     // Re-enable the device as soon as the read is done — don't hold it disabled
     // longer than necessary (employees can't punch while disabled).
