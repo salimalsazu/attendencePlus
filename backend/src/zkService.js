@@ -16,6 +16,48 @@ const ZK_TIMEOUT = parseInt(process.env.ZK_TIMEOUT || '10000');
 const CMD_REFRESHDATA = 1013;
 
 /**
+ * ZKTeco timestamp → JS Date.  Same algorithm as node-zklib's parseTimeToDate.
+ */
+function zkTimeToDate(t) {
+  const second = t % 60;  t = (t - second) / 60;
+  const minute = t % 60;  t = (t - minute) / 60;
+  const hour   = t % 24;  t = (t - hour)   / 24;
+  const day    = t % 31 + 1; t = (t - (day - 1)) / 31;
+  const month  = t % 12;  t = (t - month)  / 12;
+  return new Date(t + 2000, month, day, hour, minute, second);
+}
+
+/**
+ * Hybrid 40-byte record decoder.
+ *
+ * This device uses TWO different record layouts:
+ *   - **Old format** (pre-existing records): userId ASCII at bytes 2-10,
+ *     timestamp UInt32LE at byte 27.  This is the standard layout that
+ *     node-zklib's decodeRecordData40 expects.
+ *   - **New format** (records written after device data deletion / reorganization):
+ *     timestamp UInt32LE at byte 3, userId ASCII at bytes 18-26.
+ *     Byte 27 is 0, so the library decoder produces 1/1/2000.
+ *
+ * Detection: if UInt32LE at byte 27 > 0 → old format.  Otherwise try byte 3.
+ */
+function decodeRecord40Hybrid(raw) {
+  const timeOld = raw.readUInt32LE(27);
+  if (timeOld > 0) {
+    // Standard layout — delegate to library decoder
+    return decodeRecordData40(raw);
+  }
+
+  const timeNew = raw.readUInt32LE(3);
+  if (timeNew > 0) {
+    const userId = raw.slice(18, 18 + 9).toString('ascii').split('\0').shift();
+    return { deviceUserId: userId || '', recordTime: zkTimeToDate(timeNew) };
+  }
+
+  // Both zero — genuinely deleted / empty slot
+  return { deviceUserId: '', recordTime: new Date(2000, 0, 1) };
+}
+
+/**
  * Robust attendance reader — replaces node-zklib's buggy getAttendances().
  *
  * The library's readWithBuffer() processes only ONE TCP message per 'data'
@@ -57,24 +99,9 @@ function readAllAttendances(zk, onProgress = () => {}) {
       const records = [];
       let d = body;
       while (d.length >= 40) {
-        const rec = decodeRecordData40(d.subarray(0, 40));
+        const rec = decodeRecord40Hybrid(d.subarray(0, 40));
         records.push({ ...rec, ip: tcp.ip });
         d = d.subarray(40);
-      }
-
-      // Hex dump last 3 records to diagnose correct timestamp offset.
-      const totalRecs = Math.floor(body.length / 40);
-      const dumpCount = Math.min(3, totalRecs);
-      for (let i = totalRecs - dumpCount; i < totalRecs; i++) {
-        const raw = body.subarray(i * 40, (i + 1) * 40);
-        const hex = raw.toString('hex').match(/.{1,2}/g).join(' ');
-        // Also try reading UInt32LE at common offsets: 24, 27, 28, 32
-        const t24 = raw.readUInt32LE(24);
-        const t27 = raw.readUInt32LE(27);
-        const t28 = raw.readUInt32LE(28);
-        const t32 = raw.readUInt32LE(32);
-        ts(`Record[${i}] hex: ${hex}`);
-        ts(`Record[${i}] time@24=${t24} time@27=${t27} time@28=${t28} time@32=${t32}`);
       }
 
       resolve(records);
