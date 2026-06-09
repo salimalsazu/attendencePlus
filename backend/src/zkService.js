@@ -62,10 +62,18 @@ async function syncAttendance() {
     const { data: logs } = await zk.getAttendances();
     ts(`Device returned ${logs.length} total record(s).`);
 
+    // Debug: show date range of records returned by device
+    const validLogs = logs.filter(l => l.recordTime);
+    if (validLogs.length > 0) {
+      const dates = validLogs.map(l => new Date(l.recordTime)).sort((a, b) => a - b);
+      ts(`Device record date range: ${dates[0].toISOString()} → ${dates[dates.length - 1].toISOString()}`);
+      ts(`Sample latest 3: ${dates.slice(-3).map(d => d.toISOString()).join(', ')}`);
+    }
+
     const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     const monthLogs    = logs.filter(l => l.recordTime && new Date(l.recordTime) >= startOfMonth);
     const total        = monthLogs.length;
-    ts(`Processing ${total} record(s) for current month...`);
+    ts(`Processing ${total} record(s) for current month... (startOfMonth: ${startOfMonth.toISOString()})`);
 
     for (let i = 0; i < monthLogs.length; i++) {
       if (i > 0 && i % 20 === 0) {
@@ -136,4 +144,53 @@ async function startRealTimeListener() {
   }
 }
 
-module.exports = { syncAttendance, startRealTimeListener };
+// Quick connectivity check — used by /api/devices/diagnostics
+// Does a TCP connect to the ZK device, then a short ZK handshake to confirm
+// the device is actually a ZKTeco device (not just an open port).
+async function diagnoseZk() {
+  const result = {
+    zkIp:        ZK_IP,
+    zkPort:      ZK_PORT,
+    timeout:     ZK_TIMEOUT,
+    timestamp:   new Date().toISOString(),
+    steps:       [],
+    ok:          false,
+  };
+  const log = (step, ok, detail) => result.steps.push({ step, ok, detail });
+  const net = require('net');
+
+  // Step 1: outbound TCP connect
+  const t0 = Date.now();
+  await new Promise(resolve => {
+    const sock = new net.Socket();
+    let done = false;
+    const finish = (ok, detail) => {
+      if (done) return;
+      done = true;
+      log('tcp-connect', ok, { latencyMs: Date.now() - t0, detail });
+      try { sock.destroy(); } catch (_) {}
+      resolve();
+    };
+    sock.setTimeout(ZK_TIMEOUT);
+    sock.once('connect', () => finish(true, 'TCP socket established'));
+    sock.once('timeout', () => finish(false, `Timed out after ${ZK_TIMEOUT}ms`));
+    sock.once('error', e => finish(false, e.message));
+    sock.connect(ZK_PORT, ZK_IP);
+  });
+
+  // Step 2: ZK handshake
+  try {
+    const zk = new ZKLib(ZK_IP, ZK_PORT, ZK_TIMEOUT, 4000);
+    const t1 = Date.now();
+    await zk.createSocket();
+    log('zk-handshake', true, { latencyMs: Date.now() - t1, detail: 'ZKTeco protocol accepted' });
+    try { await zk.disconnect(); } catch (_) {}
+    result.ok = true;
+  } catch (err) {
+    log('zk-handshake', false, { detail: err?.message || String(err) });
+  }
+
+  return result;
+}
+
+module.exports = { syncAttendance, startRealTimeListener, diagnoseZk };
