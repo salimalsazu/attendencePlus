@@ -5,6 +5,12 @@ const ZK_IP      = process.env.ZK_IP      || '192.168.10.3';
 const ZK_PORT    = parseInt(process.env.ZK_PORT    || '4370');
 const ZK_TIMEOUT = parseInt(process.env.ZK_TIMEOUT || '10000');
 
+// CMD_REFRESHDATA — forces the device to flush/refresh its internal data
+// buffers. Not exposed by node-zklib, so we send it via executeCmd. This is
+// key after a device reboot: without it, getAttendances() can serve a stale
+// cached snapshot (e.g. only old records) instead of the live attendance log.
+const CMD_REFRESHDATA = 1013;
+
 // Container TZ is Asia/Dhaka (set via TZ env in docker-compose).
 // ZK device sends timestamps as local Bangladesh time, which Node.js now
 // interprets correctly as Asia/Dhaka — no manual offset needed.
@@ -34,11 +40,13 @@ async function savePunch(log) {
   }
 }
 
-// One-time full sync for current month — called once on startup
+// Full sync — called on startup and on manual trigger.
+// Pulls users + the full attendance log from the device and upserts everything.
 async function syncAttendance() {
   const zk = new ZKLib(ZK_IP, ZK_PORT, ZK_TIMEOUT, 4000);
   let recordCount = 0;
   let skipped     = 0;
+  let deviceDisabled = false;
 
   try {
     ts(`Connecting to ZKTeco at ${ZK_IP}:${ZK_PORT}...`);
@@ -58,26 +66,72 @@ async function syncAttendance() {
       });
     }
 
-    // Sync current month logs
-    ts('Fetching attendance logs (one-time full sync)...');
+    // --- Critical: read a FRESH, CONSISTENT snapshot of the attendance log ---
+    // 1. disableDevice(): freezes the device so it commits pending data and
+    //    stops mutating the log while we read — without this, getAttendances()
+    //    can return a stale cached snapshot (the old-records-only bug after reboot).
+    // 2. CMD_REFRESHDATA: forces the device to refresh its internal data buffers.
+    // 3. getInfo(): logCounts tells us how many records the device actually holds,
+    //    so we can compare against what we parse and detect truncated reads.
+    try {
+      await zk.disableDevice();
+      deviceDisabled = true;
+      ts('Device disabled for consistent read.');
+    } catch (e) {
+      ts(`Warning: disableDevice failed (${e?.message}); continuing anyway.`);
+    }
+
+    try {
+      await zk.executeCmd(CMD_REFRESHDATA, '');
+      ts('Device data buffers refreshed.');
+    } catch (e) {
+      ts(`Warning: refreshData failed (${e?.message}); continuing anyway.`);
+    }
+
+    try {
+      const info = await zk.getInfo();
+      ts(`Device info — logCounts: ${info.logCounts}, capacity: ${info.logCapacity}, users: ${info.userCounts}`);
+    } catch (e) {
+      ts(`Warning: getInfo failed (${e?.message}).`);
+    }
+
+    ts('Fetching attendance logs (full read)...');
     const { data: logs } = await zk.getAttendances();
     ts(`Device returned ${logs.length} total record(s).`);
 
-    const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    const monthLogs    = logs.filter(l => l.recordTime && new Date(l.recordTime) >= startOfMonth);
-    const total        = monthLogs.length;
-    ts(`Processing ${total} record(s) for current month...`);
+    // Re-enable the device as soon as the read is done — don't hold it disabled
+    // longer than necessary (employees can't punch while disabled).
+    if (deviceDisabled) {
+      try { await zk.enableDevice(); deviceDisabled = false; ts('Device re-enabled.'); }
+      catch (e) { ts(`Warning: enableDevice failed (${e?.message}).`); }
+    }
 
-    for (let i = 0; i < monthLogs.length; i++) {
-      if (i > 0 && i % 20 === 0) {
-        process.stdout.write(`  ${i}/${total} done, ${total - i} remaining, ${recordCount} new...\r`);
+    // Diagnostics: show the actual date range the device returned, so it's
+    // obvious whether the device is serving current data or stale old records.
+    const valid = logs.filter(l => l.recordTime && !isNaN(new Date(l.recordTime)));
+    if (valid.length) {
+      const times = valid.map(l => new Date(l.recordTime).getTime());
+      const min = new Date(Math.min(...times));
+      const max = new Date(Math.max(...times));
+      ts(`Record date range: ${min.toLocaleString()} → ${max.toLocaleString()}`);
+    }
+
+    // Process ALL returned records (not just current month). The unique
+    // constraint on (deviceUserId, punchTime) dedups, so already-saved punches
+    // are cheaply skipped. This guarantees today's punches are never filtered out.
+    const total = valid.length;
+    ts(`Processing ${total} record(s)...`);
+
+    for (let i = 0; i < valid.length; i++) {
+      if (i > 0 && i % 50 === 0) {
+        process.stdout.write(`  ${i}/${total} done, ${recordCount} new...\r`);
       }
-      const saved = await savePunch(monthLogs[i]);
+      const saved = await savePunch(valid[i]);
       if (saved) recordCount++; else skipped++;
     }
 
     process.stdout.write('\n');
-    ts(`Initial sync done. New: ${recordCount}, Already existed: ${skipped}.`);
+    ts(`Sync done. New: ${recordCount}, Already existed: ${skipped}.`);
 
     await prisma.syncLog.create({
       data: { recordCount, status: 'success', message: 'initial-sync' },
@@ -94,6 +148,10 @@ async function syncAttendance() {
     return { recordCount: 0, status: 'error', message: err.message };
 
   } finally {
+    // Safety net: make sure the device is re-enabled even if the read threw.
+    if (deviceDisabled) {
+      try { await zk.enableDevice(); } catch (_) {}
+    }
     try { await zk.disconnect(); } catch (_) {}
   }
 }
