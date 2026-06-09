@@ -1,36 +1,17 @@
-const cron = require('node-cron');
-const { syncAttendance } = require('./zkService');
-
-let nextRunAt = null;
-
-function computeNextRun() {
-  const now = new Date();
-  const next = new Date(now);
-  next.setSeconds(0, 0);
-  if (now.getMinutes() < 30) {
-    next.setMinutes(30);
-  } else {
-    next.setMinutes(0);
-    next.setHours(next.getHours() + 1);
-  }
-  return next;
-}
+const { syncAttendance, startRealTimeListener } = require('./zkService');
 
 function getNextRunAt() {
-  return nextRunAt;
+  return null;
 }
 
 async function startScheduler() {
-  // One-time full sync on startup
+  // One-time full sync on startup to catch any punches missed while server was down
   await syncAttendance();
 
-  // Periodic sync every 30 minutes — connects, fetches, disconnects
-  nextRunAt = computeNextRun();
-  cron.schedule('*/30 * * * *', async () => {
-    console.log('[Scheduler] Running periodic 30-minute sync...');
-    await syncAttendance();
-    nextRunAt = computeNextRun();
-  });
+  // Real-time listener: device pushes each punch instantly via TCP.
+  // No cron sync needed — cron conflicts with this connection AND the device's
+  // getAttendances() only returns old 2024 records after the reboot anyway.
+  startRealTimeListener();
 }
 
 module.exports = { startScheduler, getNextRunAt };
