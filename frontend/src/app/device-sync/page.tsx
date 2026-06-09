@@ -206,7 +206,7 @@ export default function DeviceSyncPage() {
       const r = await api.fixTzDuplicates();
       notifications.show({
         title: 'Cleanup complete',
-        message: `${r.deleted} duplicate record(s) removed`,
+        message: `${r.shifted} record(s) corrected, ${r.deleted} duplicate(s) removed`,
         color: 'teal',
         icon: <IconCheck size={16} />,
       });

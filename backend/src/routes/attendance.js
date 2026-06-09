@@ -103,12 +103,26 @@ router.post('/sync', async (req, res) => {
 });
 
 // POST /api/attendance/fix-tz-duplicates
-// One-time cleanup: before the timezone fix, device records were stored 6 hours ahead.
-// After the fix a correctly-timed copy of each punch was re-inserted, leaving both versions.
-// This endpoint deletes the old +6h duplicates (where a 6h-earlier copy exists for the same user).
+// Comprehensive cleanup for records stored with wrong +6h offset (Bangladesh time treated as UTC).
+// Step 1: Shift device records whose stored UTC time is in the future — they are 100% wrong
+//         (a real punch cannot be in the future; the offset made them appear ahead by 6h).
+// Step 2: Delete the old +6h duplicates that have a correct 6h-earlier copy (from after the fix).
 router.post('/fix-tz-duplicates', async (req, res) => {
   try {
-    const result = await prisma.$executeRaw`
+    // Step 1: shift wrong future records back by 6 hours.
+    // A device record with punchTime > NOW() (UTC) is definitely stored with the wrong offset.
+    // We only shift if the corrected time (punchTime - 6h) is in the past, so we don't
+    // accidentally touch anything ambiguous.
+    const shifted = await prisma.$executeRaw`
+      UPDATE "AttendanceLog"
+      SET "punchTime" = "punchTime" - INTERVAL '6 hours'
+      WHERE source = 'device'
+        AND "punchTime" > NOW()
+        AND "punchTime" - INTERVAL '6 hours' <= NOW()
+    `;
+
+    // Step 2: delete the remaining +6h duplicates where a correct copy (6h earlier) already exists.
+    const deleted = await prisma.$executeRaw`
       DELETE FROM "AttendanceLog"
       WHERE source = 'device'
         AND id IN (
@@ -123,7 +137,8 @@ router.post('/fix-tz-duplicates', async (req, res) => {
             )
         )
     `;
-    res.json({ deleted: result });
+
+    res.json({ shifted, deleted });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
