@@ -56,8 +56,9 @@ export default function DeviceSyncPage() {
   const [logOpen, setLogOpen]         = useState(true);
   const [addOpen, setAddOpen]         = useState(false);
   const [editTarget, setEditTarget]   = useState<Device | null>(null);
-  const [syncingId, setSyncingId]     = useState<string | null>(null);
+  const [syncingId, setSyncingId]       = useState<string | null>(null);
   const [savingDevice, setSavingDevice] = useState(false);
+  const [fixingTz, setFixingTz]         = useState(false);
 
   const addForm = useForm({
     initialValues: { deviceId: '', name: '', location: '', branch: '', ipAddress: '' },
@@ -198,6 +199,24 @@ export default function DeviceSyncPage() {
     }
   };
 
+  const fixTzDuplicates = async () => {
+    if (!confirm('This will delete old duplicate records that have incorrect +6h timestamps. Continue?')) return;
+    setFixingTz(true);
+    try {
+      const r = await api.fixTzDuplicates();
+      notifications.show({
+        title: 'Cleanup complete',
+        message: `${r.deleted} duplicate record(s) removed`,
+        color: 'teal',
+        icon: <IconCheck size={16} />,
+      });
+    } catch (err) {
+      notifications.show({ message: String(err), color: 'red' });
+    } finally {
+      setFixingTz(false);
+    }
+  };
+
   const exportCSV = () => {
     const headers = 'Device ID,Name,Location,Branch,IP Address,Status,Battery,Last Sync,Records\n';
     const rows = devices.map(d =>
@@ -272,6 +291,15 @@ export default function DeviceSyncPage() {
               style={{ background: '#2563eb' }}
             >
               Sync All Devices
+            </Button>
+            <Button
+              variant="light"
+              color="orange"
+              leftSection={fixingTz ? <Loader size={13} /> : <IconX size={14} />}
+              onClick={fixTzDuplicates}
+              loading={fixingTz}
+            >
+              Fix Duplicate Records
             </Button>
             <Button variant="default" leftSection={<IconDownload size={14} />} onClick={exportCSV}>
               Export CSV

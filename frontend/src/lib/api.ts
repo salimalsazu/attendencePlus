@@ -83,6 +83,9 @@ export const api = {
   triggerSync: () =>
     fetchJSON<SyncResult>('/api/attendance/sync', { method: 'POST' }),
 
+  fixTzDuplicates: () =>
+    fetchJSON<{ deleted: number }>('/api/attendance/fix-tz-duplicates', { method: 'POST' }),
+
   syncLogs: () =>
     fetchJSON<SyncLog[]>('/api/attendance/sync-logs'),
 

@@ -102,6 +102,33 @@ router.post('/sync', async (req, res) => {
   }
 });
 
+// POST /api/attendance/fix-tz-duplicates
+// One-time cleanup: before the timezone fix, device records were stored 6 hours ahead.
+// After the fix a correctly-timed copy of each punch was re-inserted, leaving both versions.
+// This endpoint deletes the old +6h duplicates (where a 6h-earlier copy exists for the same user).
+router.post('/fix-tz-duplicates', async (req, res) => {
+  try {
+    const result = await prisma.$executeRaw`
+      DELETE FROM "AttendanceLog"
+      WHERE source = 'device'
+        AND id IN (
+          SELECT a1.id
+          FROM "AttendanceLog" a1
+          WHERE a1.source = 'device'
+            AND EXISTS (
+              SELECT 1 FROM "AttendanceLog" a2
+              WHERE a2."deviceUserId" = a1."deviceUserId"
+                AND a2."punchTime" = a1."punchTime" - INTERVAL '6 hours'
+                AND a2.source = 'device'
+            )
+        )
+    `;
+    res.json({ deleted: result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/attendance/sync-logs
 router.get('/sync-logs', async (req, res) => {
   try {
