@@ -86,6 +86,13 @@ export const api = {
   fixTzDuplicates: () =>
     fetchJSON<{ shifted: number; deleted: number }>('/api/attendance/fix-tz-duplicates', { method: 'POST' }),
 
+  bulkImport: (data: { date: string; punches: { deviceUserId: string; time: string; punchType?: number }[] }) =>
+    fetchJSON<{ saved: number; skipped: number; errors: unknown[] }>('/api/attendance/bulk-import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
   syncLogs: () =>
     fetchJSON<SyncLog[]>('/api/attendance/sync-logs'),
 
@@ -133,6 +140,16 @@ export const api = {
 
   syncDevice: (deviceId: string) =>
     fetchJSON<SyncResult>(`/api/devices/${encodeURIComponent(deviceId)}/sync`, { method: 'POST' }),
+
+  zkDiagnostics: () =>
+    fetchJSON<{
+      zkIp: string;
+      zkPort: number;
+      timeout: number;
+      timestamp: string;
+      ok: boolean;
+      steps: { step: string; ok: boolean; detail: { latencyMs?: number; detail?: string } }[];
+    }>('/api/devices/diagnostics'),
 
   // Manual attendance
   createManualPunch: (data: {

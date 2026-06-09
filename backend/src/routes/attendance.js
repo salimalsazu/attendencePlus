@@ -442,6 +442,49 @@ router.get('/monthly-report', async (req, res) => {
   }
 });
 
+// POST /api/attendance/bulk-import
+// Body: { date: "2026-06-09", punches: [{ deviceUserId: "34", time: "09:21", punchType: 0 }, ...] }
+// Lets admin enter missed punches from the device screen in bulk.
+router.post('/bulk-import', async (req, res) => {
+  try {
+    const { date, punches } = req.body;
+    if (!date || !Array.isArray(punches) || punches.length === 0)
+      return res.status(400).json({ error: 'date and punches[] are required' });
+
+    let saved = 0, skipped = 0;
+    const errors = [];
+
+    for (const p of punches) {
+      const uid  = String(p.deviceUserId ?? '').trim();
+      const time = String(p.time ?? '').trim();
+      if (!uid || !time) { errors.push({ ...p, reason: 'missing userId or time' }); continue; }
+
+      const punchTime = new Date(`${date}T${time.includes(':') && time.length === 5 ? time + ':00' : time}`);
+      if (isNaN(punchTime.getTime())) { errors.push({ ...p, reason: 'invalid time' }); continue; }
+
+      try {
+        await prisma.attendanceLog.create({
+          data: {
+            deviceUserId: uid,
+            punchTime,
+            punchType: parseInt(p.punchType ?? 0),
+            source: 'manual',
+            note: 'bulk-import',
+          },
+        });
+        saved++;
+      } catch (e) {
+        if (e.code === 'P2002') skipped++; // duplicate
+        else errors.push({ ...p, reason: e.message });
+      }
+    }
+
+    res.json({ saved, skipped, errors });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/attendance/manual — admin creates a punch record manually
 router.post('/manual', async (req, res) => {
   try {

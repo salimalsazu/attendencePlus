@@ -2,10 +2,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActionIcon,
+  Alert,
   Badge,
   Box,
   Button,
   Collapse,
+  Divider,
   Group,
   Select,
   Loader,
@@ -17,6 +19,7 @@ import {
   Stack,
   Table,
   Text,
+  Textarea,
   TextInput,
   ThemeIcon,
   Title,
@@ -34,6 +37,7 @@ import {
   IconPlus,
   IconRefresh,
   IconTrash,
+  IconUpload,
   IconWifi,
   IconWifiOff,
   IconX,
@@ -59,6 +63,13 @@ export default function DeviceSyncPage() {
   const [syncingId, setSyncingId]       = useState<string | null>(null);
   const [savingDevice, setSavingDevice] = useState(false);
   const [fixingTz, setFixingTz]         = useState(false);
+  const [bulkOpen, setBulkOpen]         = useState(false);
+  const [bulkDate, setBulkDate]         = useState(() => new Date().toISOString().split('T')[0]);
+  const [bulkText, setBulkText]         = useState('');
+  const [bulkSaving, setBulkSaving]     = useState(false);
+  const [diagOpen, setDiagOpen]         = useState(false);
+  const [diagLoading, setDiagLoading]   = useState(false);
+  const [diagResult, setDiagResult]     = useState<Awaited<ReturnType<typeof api.zkDiagnostics>> | null>(null);
 
   const addForm = useForm({
     initialValues: { deviceId: '', name: '', location: '', branch: '', ipAddress: '' },
@@ -199,6 +210,21 @@ export default function DeviceSyncPage() {
     }
   };
 
+  const runDiagnostics = async () => {
+    setDiagLoading(true);
+    setDiagOpen(true);
+    setDiagResult(null);
+    try {
+      const r = await api.zkDiagnostics();
+      setDiagResult(r);
+    } catch (err) {
+      notifications.show({ message: String(err), color: 'red' });
+      setDiagOpen(false);
+    } finally {
+      setDiagLoading(false);
+    }
+  };
+
   const fixTzDuplicates = async () => {
     if (!confirm('This will delete old duplicate records that have incorrect +6h timestamps. Continue?')) return;
     setFixingTz(true);
@@ -214,6 +240,38 @@ export default function DeviceSyncPage() {
       notifications.show({ message: String(err), color: 'red' });
     } finally {
       setFixingTz(false);
+    }
+  };
+
+  const runBulkImport = async () => {
+    const lines = bulkText.split('\n').map(l => l.trim()).filter(Boolean);
+    if (!lines.length) return;
+
+    // Each line: "userId,HH:MM" or "userId,HH:MM,punchType"
+    const punches = lines.map(line => {
+      const parts = line.split(',').map(p => p.trim());
+      return { deviceUserId: parts[0], time: parts[1], punchType: parseInt(parts[2] ?? '0') || 0 };
+    }).filter(p => p.deviceUserId && p.time);
+
+    if (!punches.length) {
+      notifications.show({ message: 'No valid lines found. Use format: userId,HH:MM', color: 'red' });
+      return;
+    }
+
+    setBulkSaving(true);
+    try {
+      const r = await api.bulkImport({ date: bulkDate, punches });
+      notifications.show({
+        title: 'Bulk import done',
+        message: `${r.saved} saved, ${r.skipped} already existed${r.errors.length ? `, ${r.errors.length} error(s)` : ''}`,
+        color: r.saved > 0 ? 'green' : 'orange',
+        icon: <IconCheck size={16} />,
+      });
+      if (r.saved > 0) { setBulkText(''); setBulkOpen(false); }
+    } catch (err) {
+      notifications.show({ message: String(err), color: 'red' });
+    } finally {
+      setBulkSaving(false);
     }
   };
 
@@ -285,6 +343,14 @@ export default function DeviceSyncPage() {
           </Group>
           <Group gap="sm">
             <Button
+              variant="light"
+              color="grape"
+              leftSection={<IconWifi size={14} />}
+              onClick={runDiagnostics}
+            >
+              Test Connection
+            </Button>
+            <Button
               leftSection={syncingId === 'ALL' ? <Loader size={13} color="white" /> : <IconRefresh size={14} />}
               onClick={syncAll}
               disabled={!!syncingId}
@@ -300,6 +366,14 @@ export default function DeviceSyncPage() {
               loading={fixingTz}
             >
               Fix Duplicate Records
+            </Button>
+            <Button
+              variant="light"
+              color="violet"
+              leftSection={<IconUpload size={14} />}
+              onClick={() => setBulkOpen(true)}
+            >
+              Bulk Import Punches
             </Button>
             <Button variant="default" leftSection={<IconDownload size={14} />} onClick={exportCSV}>
               Export CSV
@@ -542,6 +616,109 @@ export default function DeviceSyncPage() {
             </Group>
           </Stack>
         </form>
+      </Modal>
+
+      {/* Bulk Import modal */}
+      <Modal
+        opened={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        title={<Text fw={700}>Bulk Import Missed Punches</Text>}
+        size="md"
+        radius="md"
+      >
+        <Stack gap="sm">
+          <Alert color="blue" variant="light">
+            <Text fz="sm" fw={600}>Use this when today&apos;s device punches didn&apos;t sync automatically.</Text>
+            <Text fz="xs" mt={4}>
+              Check the device screen &rarr; enter each punch below as <code>userId,HH:MM</code> (one per line).
+              Example: <code>34,09:21</code>
+            </Text>
+          </Alert>
+          <TextInput
+            label="Date"
+            type="date"
+            value={bulkDate}
+            onChange={e => setBulkDate(e.currentTarget.value)}
+          />
+          <Textarea
+            label="Punch records"
+            placeholder={'34,09:21\n34,10:54\n34,11:48\n35,09:15'}
+            description="Format: userId,HH:MM — one punch per line"
+            minRows={6}
+            autosize
+            value={bulkText}
+            onChange={e => setBulkText(e.currentTarget.value)}
+            styles={{ input: { fontFamily: 'monospace', fontSize: 13 } }}
+          />
+          <Text fz="xs" c="dimmed">
+            {bulkText.split('\n').filter(l => l.trim()).length} line(s) entered
+          </Text>
+          <Group justify="flex-end" mt="xs">
+            <Button variant="default" onClick={() => setBulkOpen(false)}>Cancel</Button>
+            <Button
+              color="violet"
+              leftSection={<IconUpload size={14} />}
+              loading={bulkSaving}
+              onClick={runBulkImport}
+            >
+              Import
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* ZK diagnostics modal */}
+      <Modal
+        opened={diagOpen}
+        onClose={() => setDiagOpen(false)}
+        title={<Text fw={700}>ZK Device Connection Test</Text>}
+        size="md"
+        radius="md"
+      >
+        {diagLoading && (
+          <Group justify="center" py="lg"><Loader /><Text ml="sm">Probing backend…</Text></Group>
+        )}
+        {diagResult && (
+          <Stack gap="sm">
+            <Group gap="xs">
+              <Text fz="sm" c="dimmed">Target:</Text>
+              <Text fz="sm" fw={600} style={{ fontFamily: 'monospace' }}>{diagResult.zkIp}:{diagResult.zkPort}</Text>
+            </Group>
+            <Group gap="xs">
+              <Text fz="sm" c="dimmed">Status:</Text>
+              <Badge color={diagResult.ok ? 'green' : 'red'} variant="light">
+                {diagResult.ok ? 'Reachable' : 'Unreachable'}
+              </Badge>
+            </Group>
+            <Divider my={4} />
+            {diagResult.steps.map((s, i) => (
+              <Group key={i} justify="space-between" wrap="nowrap" align="flex-start">
+                <Group gap={8} wrap="nowrap" style={{ flex: 1 }}>
+                  <ThemeIcon size="sm" radius="xl" variant="light" color={s.ok ? 'green' : 'red'}>
+                    {s.ok ? <IconCheck size={12} /> : <IconX size={12} />}
+                  </ThemeIcon>
+                  <div>
+                    <Text fz="sm" fw={600}>{s.step}</Text>
+                    <Text fz="xs" c="dimmed">
+                      {s.detail?.detail ?? ''}
+                      {s.detail?.latencyMs != null ? ` · ${s.detail.latencyMs}ms` : ''}
+                    </Text>
+                  </div>
+                </Group>
+              </Group>
+            ))}
+            {!diagResult.ok && (
+              <Alert color="red" variant="light" mt="sm">
+                <Text fz="sm" fw={600}>The backend cannot reach the ZK device.</Text>
+                <Text fz="xs" mt={4}>
+                  On Docker Desktop for Windows, the container cannot route through WireGuard unless{' '}
+                  <code>network_mode: host</code> is set (already set in docker-compose.yml). If this
+                  still fails, run the backend on the host directly: <code>node index.js</code>.
+                </Text>
+              </Alert>
+            )}
+          </Stack>
+        )}
       </Modal>
     </Box>
   );
