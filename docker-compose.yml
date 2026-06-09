@@ -22,16 +22,15 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
-    ports:
-      - "4000:4000"
+    network_mode: host
     environment:
-      DATABASE_URL: postgresql://attend_user:${POSTGRES_PASSWORD}@postgres:5432/attendance_db
+      DATABASE_URL: postgresql://attend_user:${POSTGRES_PASSWORD}@localhost:5435/attendance_db
       JWT_SECRET: ${JWT_SECRET}
       ZK_IP: ${ZK_IP}
       ZK_PORT: ${ZK_PORT:-4370}
       ZK_TIMEOUT: ${ZK_TIMEOUT:-10000}
-      ZK_TZ_OFFSET_HOURS: ${ZK_TZ_OFFSET_HOURS:-6}
       PORT: 4000
+      TZ: Asia/Dhaka
     depends_on:
       postgres:
         condition: service_healthy
@@ -44,7 +43,7 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     restart: unless-stopped
     ports:
-      - "3001:3001"
+      - "3002:3001"
     depends_on:
       - backend
 

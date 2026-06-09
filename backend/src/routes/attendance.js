@@ -3,10 +3,16 @@ const prisma = require('../prismaClient');
 const { syncAttendance } = require('../zkService');
 const { getSettings, parseTime } = require('../settings');
 
-// Office hours in settings are Bangladesh local time (UTC+6).
-// Punch times are stored as UTC. Subtract this offset when building
-// office start/end thresholds so comparisons are in the same timezone.
-const TZ_OFFSET_HOURS = parseInt(process.env.ZK_TZ_OFFSET_HOURS ?? '6');
+// Container TZ is Asia/Dhaka — all Date operations use Bangladesh local time.
+// No manual UTC offset needed; setHours(9, 30) means 9:30 AM Bangladesh.
+
+// Helper: return YYYY-MM-DD in the container's local timezone (Asia/Dhaka)
+function localDateStr(d) {
+  const year  = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day   = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 // GET /api/attendance/daily-summary?date=2026-06-08
 // One row per employee: firstPunch, lastPunch, totalPunches, durationMins, status
@@ -219,7 +225,7 @@ router.get('/report', async (req, res) => {
       if (first) {
         const fp          = new Date(first.punchTime);
         const officeStart = new Date(fp);
-        officeStart.setHours(startTime.hours - TZ_OFFSET_HOURS, startTime.minutes, 0, 0);
+        officeStart.setHours(startTime.hours, startTime.minutes, 0, 0);
         const lateThresh  = new Date(officeStart.getTime() + lateGrace * 60_000);
         delayMins = Math.max(0, Math.round((fp - officeStart) / 60_000));
         rowStatus = fp > lateThresh ? 'late' : 'present';
@@ -229,7 +235,7 @@ router.get('/report', async (req, res) => {
       if (last) {
         const lp         = new Date(last.punchTime);
         const officeEnd  = new Date(lp);
-        officeEnd.setHours(endTime.hours - TZ_OFFSET_HOURS, endTime.minutes, 0, 0);
+        officeEnd.setHours(endTime.hours, endTime.minutes, 0, 0);
         const earlyThresh = new Date(officeEnd.getTime() - earlyGrace * 60_000);
         if (lp < earlyThresh) {
           earlyLeaveMins = Math.round((officeEnd - lp) / 60_000);
@@ -329,11 +335,11 @@ router.get('/monthly-report', async (req, res) => {
       }),
     ]);
 
-    // Group logs by user → date
+    // Group logs by user → date (local Bangladesh date, not UTC)
     const byUserDate = {};
     for (const log of logs) {
       const uid     = log.deviceUserId;
-      const dateStr = new Date(log.punchTime).toISOString().split('T')[0];
+      const dateStr = localDateStr(new Date(log.punchTime));
       if (!byUserDate[uid])          byUserDate[uid]          = {};
       if (!byUserDate[uid][dateStr]) byUserDate[uid][dateStr] = [];
       byUserDate[uid][dateStr].push(log);
@@ -344,7 +350,7 @@ router.get('/monthly-report', async (req, res) => {
     const cursor = new Date(from);
     while (cursor <= to) {
       allDates.push({
-        dateStr:   cursor.toISOString().split('T')[0],
+        dateStr:   localDateStr(cursor),
         isHoliday: holidayNums.has(cursor.getDay()),
         isFuture:  cursor > today,
       });
@@ -374,7 +380,7 @@ router.get('/monthly-report', async (req, res) => {
           : null;
 
         const fp          = new Date(first.punchTime);
-        const officeStart = new Date(fp); officeStart.setHours(startTime.hours - TZ_OFFSET_HOURS, startTime.minutes, 0, 0);
+        const officeStart = new Date(fp); officeStart.setHours(startTime.hours, startTime.minutes, 0, 0);
         const lateThresh  = new Date(officeStart.getTime() + lateGrace * 60_000);
         const delayMins   = Math.max(0, Math.round((fp - officeStart) / 60_000));
         let dayStatus     = fp > lateThresh ? 'late' : 'present';
@@ -382,7 +388,7 @@ router.get('/monthly-report', async (req, res) => {
         let earlyLeaveMins = 0;
         if (last) {
           const lp        = new Date(last.punchTime);
-          const officeEnd = new Date(lp); officeEnd.setHours(endTime.hours - TZ_OFFSET_HOURS, endTime.minutes, 0, 0);
+          const officeEnd = new Date(lp); officeEnd.setHours(endTime.hours, endTime.minutes, 0, 0);
           const earlyThr  = new Date(officeEnd.getTime() - earlyGrace * 60_000);
           if (lp < earlyThr) {
             earlyLeaveMins = Math.round((officeEnd - lp) / 60_000);
