@@ -76,25 +76,36 @@ function readAllAttendances(zk, onProgress = () => {}) {
 
     const processFrames = () => {
       // Drain EVERY complete TCP message currently buffered (the key fix).
+      // Need >= 6 bytes to read the 2-byte length field at offset 4.
       while (frameBuf.length >= 8) {
         const packetLength = frameBuf.readUIntLE(4, 2); // payload size after 8-byte TCP prefix
+
+        // Guard against a malformed/zero length that would loop forever.
+        if (packetLength <= 0) { frameBuf = frameBuf.subarray(8); continue; }
         if (frameBuf.length < 8 + packetLength) break;  // message not fully arrived yet
 
         const message = frameBuf.subarray(0, 8 + packetLength);
         frameBuf = frameBuf.subarray(8 + packetLength);
 
-        const cmdId = message.readUIntLE(8, 2); // command id sits right after the 8-byte prefix
+        // Need at least 8 (prefix) + 2 (command id) bytes to inspect the command.
+        if (message.length < 10) continue;
+        const cmdId   = message.readUIntLE(8, 2); // command id right after the 8-byte prefix
+        const payload = message.subarray(16);     // data after 8-byte prefix + 8-byte cmd header
 
         if (phase === 'prepare') {
           if (cmdId === COMMANDS.CMD_DATA) {
-            // Small dataset returned inline (no chunking).
-            recordData = Buffer.concat([recordData, message.subarray(16)]);
+            // Small dataset returned inline (no chunking needed).
+            recordData = Buffer.concat([recordData, payload]);
             size = recordData.length;
             return finish();
           }
-          if (cmdId === COMMANDS.CMD_ACK_OK || cmdId === COMMANDS.CMD_PREPARE_DATA) {
-            const recvData = message.subarray(16);
-            size = recvData.readUIntLE(1, 4); // declared total payload size
+          // The size is carried in CMD_PREPARE_DATA / CMD_ACK_OK, at payload offset 1
+          // (4 bytes). Short ack packets (empty payload) arrive first — skip them
+          // and keep waiting for the real prepare packet.
+          if ((cmdId === COMMANDS.CMD_PREPARE_DATA || cmdId === COMMANDS.CMD_ACK_OK)
+              && payload.length >= 5) {
+            size = payload.readUIntLE(1, 4); // declared total payload size
+            if (size <= 0) continue;         // not a real prepare; ignore
             phase = 'data';
             onProgress(0, size);
 
@@ -106,11 +117,11 @@ function readAllAttendances(zk, onProgress = () => {}) {
             }
             if (remain > 0) tcp.sendChunkRequest(numberChunks * MAX_CHUNK, remain);
           }
-          // ignore any other command in prepare phase
+          // any other command in prepare phase is ignored
         } else {
           // data phase: each CMD_DATA message payload = [8-byte sub-header][chunk data]
-          if (cmdId === COMMANDS.CMD_DATA) {
-            const chunkData = message.subarray(16).subarray(8);
+          if (cmdId === COMMANDS.CMD_DATA && payload.length >= 8) {
+            const chunkData = payload.subarray(8);
             recordData = Buffer.concat([recordData, chunkData]);
             onProgress(recordData.length, size);
             if (size > 0 && recordData.length >= size) return finish();
@@ -120,9 +131,16 @@ function readAllAttendances(zk, onProgress = () => {}) {
     };
 
     const onData = (data) => {
-      armIdle();
-      frameBuf = Buffer.concat([frameBuf, data]);
-      processFrames();
+      try {
+        armIdle();
+        frameBuf = Buffer.concat([frameBuf, data]);
+        processFrames();
+      } catch (e) {
+        // Never let a parse error crash the process — reject so syncAttendance
+        // falls back to the library reader.
+        cleanup();
+        reject(new Error(`Read parse error: ${e.message}`));
+      }
     };
 
     socket.once('close', () => {
