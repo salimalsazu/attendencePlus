@@ -290,10 +290,29 @@ async function syncAttendance() {
       const max = new Date(Math.max(...times));
       ts(`Record date range: ${min.toLocaleString()} → ${max.toLocaleString()}`);
 
-      // Show last 5 records for debugging — if today's punches are at the tail
-      // and getting clipped by the settle-timeout, this reveals it.
-      const last5 = logs.slice(-5).map(l => `${l.deviceUserId}@${l.recordTime}`);
-      ts(`Last 5 records: ${last5.join(' | ')}`);
+      // Diagnostic: date distribution — how many records per year, and how many
+      // are zeroed-out (1/1/2000) from device-side deletion.
+      const yearCounts = {};
+      let zeroCount = 0;
+      for (const l of logs) {
+        const d = new Date(l.recordTime);
+        const yr = d.getFullYear();
+        yearCounts[yr] = (yearCounts[yr] || 0) + 1;
+        if (yr === 2000 && d.getMonth() === 0 && d.getDate() === 1) zeroCount++;
+      }
+      ts(`Date distribution: ${JSON.stringify(yearCounts)}`);
+      ts(`Zeroed/deleted slots (1/1/2000): ${zeroCount}`);
+
+      // Show last 5 AND first 5 valid non-zero records
+      const nonZero = logs.filter(l => {
+        const d = new Date(l.recordTime);
+        return !(d.getFullYear() === 2000 && d.getMonth() === 0 && d.getDate() === 1);
+      });
+      if (nonZero.length) {
+        const last5nz = nonZero.slice(-5).map(l => `${l.deviceUserId}@${new Date(l.recordTime).toLocaleString()}`);
+        ts(`Last 5 non-zero records: ${last5nz.join(' | ')}`);
+      }
+      ts(`Total non-zero records: ${nonZero.length}, zero/deleted: ${zeroCount}`);
     }
 
     // Historical data is already synced — we only need to save records from the
