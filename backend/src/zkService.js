@@ -64,14 +64,22 @@ function readAllAttendances(zk, onProgress = () => {}) {
       resolve(records);
     };
 
+    // When the device stops sending for IDLE_MS, the stream has ended. If we're
+    // in the data phase and already have (nearly) all of it, finish with what we
+    // have rather than failing — the device sometimes ends a few bytes short of
+    // its own declared size, and the cron re-reads the full log every cycle, so
+    // any record missed by a hair is caught on the next run within minutes.
+    const IDLE_MS = 4000;
     const armIdle = () => {
       if (idleTimer) clearTimeout(idleTimer);
       idleTimer = setTimeout(() => {
-        // No data for a while. If we already have everything, finish; else fail.
-        if (size > 0 && recordData.length >= size) return finish();
+        if (phase === 'data' && recordData.length > 4) {
+          ts(`Read settled: ${recordData.length}/${size} bytes (${Math.floor((recordData.length - 4) / 40)} records).`);
+          return finish();
+        }
         cleanup();
         reject(new Error(`Idle timeout: received ${recordData.length}/${size || '?'} bytes`));
-      }, ZK_TIMEOUT);
+      }, IDLE_MS);
     };
 
     const processFrames = () => {
@@ -258,6 +266,9 @@ async function syncAttendance() {
       ts(`Robust read OK — ${logs.length} record(s) parsed from ${reportedSize} bytes (device reports ~${Math.floor(reportedSize / 40)} records).`);
     } catch (e) {
       ts(`Robust read failed (${e?.message}); falling back to library getAttendances().`);
+      // Clear any leftover bytes the failed read left on the socket, otherwise
+      // the library read parses garbage (wrong record count / 1/1/2000 dates).
+      try { await zk.freeData(); } catch (_) {}
       const res = await zk.getAttendances();
       logs = res.data || [];
       ts(`Fallback read returned ${logs.length} record(s).`);
