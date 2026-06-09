@@ -1,39 +1,19 @@
-const cron = require('node-cron');
 const { syncAttendance, startRealTimeListener } = require('./zkService');
 
-let nextRunAt = null;
-
-function computeNextRun() {
-  const now = new Date();
-  const next = new Date(now);
-  next.setSeconds(0, 0);
-  if (now.getMinutes() < 30) {
-    next.setMinutes(30);
-  } else {
-    next.setMinutes(0);
-    next.setHours(next.getHours() + 1);
-  }
-  return next;
-}
-
+// getNextRunAt kept for API compatibility — returns null since periodic sync is removed.
 function getNextRunAt() {
-  return nextRunAt;
+  return null;
 }
 
 async function startScheduler() {
-  // One-time full sync on startup
+  // One-time full sync on startup to catch any punches missed while server was down
   await syncAttendance();
 
-  // Real-time listener (stays alive forever)
+  // Real-time listener stays connected forever and captures every punch instantly.
+  // A separate periodic sync is NOT used because the ZKTeco device only allows one
+  // TCP connection at a time — the real-time listener holds it, so any second
+  // connection attempt fails. The startup sync above covers missed punches on restart.
   startRealTimeListener();
-
-  // Periodic sync every 30 minutes at :00 and :30
-  nextRunAt = computeNextRun();
-  cron.schedule('*/30 * * * *', async () => {
-    console.log('[Scheduler] Running periodic 30-minute sync...');
-    await syncAttendance();
-    nextRunAt = computeNextRun();
-  });
 }
 
 module.exports = { startScheduler, getNextRunAt };

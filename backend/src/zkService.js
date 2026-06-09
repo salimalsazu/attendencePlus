@@ -86,7 +86,7 @@ async function syncAttendance() {
 
   } catch (err) {
     process.stdout.write('\n');
-    ts(`Sync error: ${err.message}`);
+    ts(`Sync error: ${err?.message || String(err)}`);
     await prisma.syncLog.create({
       data: { recordCount: 0, status: 'error', message: err.message },
     });
