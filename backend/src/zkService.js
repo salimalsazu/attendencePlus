@@ -69,7 +69,7 @@ function readAllAttendances(zk, onProgress = () => {}) {
     // have rather than failing — the device sometimes ends a few bytes short of
     // its own declared size, and the cron re-reads the full log every cycle, so
     // any record missed by a hair is caught on the next run within minutes.
-    const IDLE_MS = 4000;
+    const IDLE_MS = 8000;
     const armIdle = () => {
       if (idleTimer) clearTimeout(idleTimer);
       idleTimer = setTimeout(() => {
@@ -289,6 +289,11 @@ async function syncAttendance() {
       const min = new Date(Math.min(...times));
       const max = new Date(Math.max(...times));
       ts(`Record date range: ${min.toLocaleString()} → ${max.toLocaleString()}`);
+
+      // Show last 5 records for debugging — if today's punches are at the tail
+      // and getting clipped by the settle-timeout, this reveals it.
+      const last5 = logs.slice(-5).map(l => `${l.deviceUserId}@${l.recordTime}`);
+      ts(`Last 5 records: ${last5.join(' | ')}`);
     }
 
     // Historical data is already synced — we only need to save records from the
