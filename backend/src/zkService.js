@@ -1,6 +1,10 @@
 const ZKLib = require('node-zklib');
 const prisma = require('./prismaClient');
 
+// Low-level protocol helpers from node-zklib, used by our robust reader below.
+const { createTCPHeader, decodeRecordData40 } = require('node-zklib/utils');
+const { COMMANDS, MAX_CHUNK, REQUEST_DATA } = require('node-zklib/constants');
+
 const ZK_IP      = process.env.ZK_IP      || '192.168.10.3';
 const ZK_PORT    = parseInt(process.env.ZK_PORT    || '4370');
 const ZK_TIMEOUT = parseInt(process.env.ZK_TIMEOUT || '10000');
@@ -10,6 +14,130 @@ const ZK_TIMEOUT = parseInt(process.env.ZK_TIMEOUT || '10000');
 // key after a device reboot: without it, getAttendances() can serve a stale
 // cached snapshot (e.g. only old records) instead of the live attendance log.
 const CMD_REFRESHDATA = 1013;
+
+/**
+ * Robust attendance reader — replaces node-zklib's buggy getAttendances().
+ *
+ * The library's readWithBuffer() processes only ONE TCP message per 'data'
+ * event and relies on exact per-chunk length matching. When the device sends
+ * multiple chunks coalesced into fewer TCP packets (which happens for large
+ * logs), it reads only the first 65,472-byte chunk and times out on the rest
+ * ("N PACKETS REMAIN") — truncating ~15,000 records down to ~1,636.
+ *
+ * This implementation:
+ *   1. Sends CMD_DATA_WRRQ and reads the device-declared total size.
+ *   2. Requests every chunk up front (same as the library).
+ *   3. DRAINS ALL complete TCP messages from the buffer on each 'data' event
+ *      (the missing while-loop), stripping the 8-byte per-chunk sub-header.
+ *   4. Resolves the moment the accumulated record bytes reach the declared
+ *      size — so it never hangs waiting for a phantom exact-length match.
+ *
+ * Returns an array of { deviceUserId, recordTime } records.
+ */
+function readAllAttendances(zk, onProgress = () => {}) {
+  return new Promise((resolve, reject) => {
+    const tcp = zk.zklibTcp;
+    const socket = tcp.socket;
+    if (!socket) return reject(new Error('Socket not connected'));
+
+    let phase = 'prepare';   // 'prepare' → waiting for size; 'data' → streaming chunks
+    let size = 0;            // device-declared total payload size (bytes)
+    let recordData = Buffer.from([]); // accumulated record bytes (4-byte count prefix + N*40)
+    let frameBuf  = Buffer.from([]);  // raw TCP reassembly buffer
+    let idleTimer = null;
+
+    const cleanup = () => {
+      socket.removeListener('data', onData);
+      if (idleTimer) clearTimeout(idleTimer);
+    };
+
+    const finish = () => {
+      cleanup();
+      const body = recordData.subarray(4); // drop 4-byte record-count prefix
+      const records = [];
+      let d = body;
+      while (d.length >= 40) {
+        const rec = decodeRecordData40(d.subarray(0, 40));
+        records.push({ ...rec, ip: tcp.ip });
+        d = d.subarray(40);
+      }
+      resolve(records);
+    };
+
+    const armIdle = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        // No data for a while. If we already have everything, finish; else fail.
+        if (size > 0 && recordData.length >= size) return finish();
+        cleanup();
+        reject(new Error(`Idle timeout: received ${recordData.length}/${size || '?'} bytes`));
+      }, ZK_TIMEOUT);
+    };
+
+    const processFrames = () => {
+      // Drain EVERY complete TCP message currently buffered (the key fix).
+      while (frameBuf.length >= 8) {
+        const packetLength = frameBuf.readUIntLE(4, 2); // payload size after 8-byte TCP prefix
+        if (frameBuf.length < 8 + packetLength) break;  // message not fully arrived yet
+
+        const message = frameBuf.subarray(0, 8 + packetLength);
+        frameBuf = frameBuf.subarray(8 + packetLength);
+
+        const cmdId = message.readUIntLE(8, 2); // command id sits right after the 8-byte prefix
+
+        if (phase === 'prepare') {
+          if (cmdId === COMMANDS.CMD_DATA) {
+            // Small dataset returned inline (no chunking).
+            recordData = Buffer.concat([recordData, message.subarray(16)]);
+            size = recordData.length;
+            return finish();
+          }
+          if (cmdId === COMMANDS.CMD_ACK_OK || cmdId === COMMANDS.CMD_PREPARE_DATA) {
+            const recvData = message.subarray(16);
+            size = recvData.readUIntLE(1, 4); // declared total payload size
+            phase = 'data';
+            onProgress(0, size);
+
+            // Request all chunks up front.
+            const remain = size % MAX_CHUNK;
+            const numberChunks = Math.floor(size / MAX_CHUNK);
+            for (let i = 0; i < numberChunks; i++) {
+              tcp.sendChunkRequest(i * MAX_CHUNK, MAX_CHUNK);
+            }
+            if (remain > 0) tcp.sendChunkRequest(numberChunks * MAX_CHUNK, remain);
+          }
+          // ignore any other command in prepare phase
+        } else {
+          // data phase: each CMD_DATA message payload = [8-byte sub-header][chunk data]
+          if (cmdId === COMMANDS.CMD_DATA) {
+            const chunkData = message.subarray(16).subarray(8);
+            recordData = Buffer.concat([recordData, chunkData]);
+            onProgress(recordData.length, size);
+            if (size > 0 && recordData.length >= size) return finish();
+          }
+        }
+      }
+    };
+
+    const onData = (data) => {
+      armIdle();
+      frameBuf = Buffer.concat([frameBuf, data]);
+      processFrames();
+    };
+
+    socket.once('close', () => {
+      cleanup();
+      reject(new Error('Socket closed during attendance read'));
+    });
+    socket.on('data', onData);
+    armIdle();
+
+    // Kick off the request.
+    tcp.replyId++;
+    const reqBuf = createTCPHeader(COMMANDS.CMD_DATA_WRRQ, tcp.sessionId, tcp.replyId, REQUEST_DATA.GET_ATTENDANCE_LOGS);
+    socket.write(reqBuf, null, err => { if (err) { cleanup(); reject(err); } });
+  });
+}
 
 // Container TZ is Asia/Dhaka (set via TZ env in docker-compose).
 // ZK device sends timestamps as local Bangladesh time, which Node.js now
@@ -96,18 +224,25 @@ async function syncAttendance() {
     }
 
     ts('Fetching attendance logs (full read)...');
-    // The progress callback receives (bytesReceivedSoFar, deviceReportedTotalSize).
-    // We capture the device-reported total size to detect chunk truncation:
-    // if totalSize/40 (record size) >> records we parsed, the multi-chunk read
-    // dropped data past the first 65,472-byte chunk.
+    // Clear any stale device read buffer before requesting (library hygiene).
+    try { await zk.freeData(); } catch (_) {}
+
+    // Primary path: our robust reader that correctly drains ALL chunks.
+    // Fallback: the library's getAttendances() if the robust reader throws,
+    // so a bad read never leaves us with nothing.
+    let logs = [];
     let reportedSize = 0;
-    const { data: logs, err: readErr } = await zk.getAttendances((recvBytes, totalSize) => {
-      if (totalSize > reportedSize) reportedSize = totalSize;
-    });
-    ts(`Device returned ${logs.length} record(s). Device-reported payload size: ${reportedSize} bytes (~${Math.floor(reportedSize / 40)} records).`);
-    if (readErr) ts(`*** READ WAS TRUNCATED/ERRORED: ${readErr.message || readErr}. Records past the first chunk were lost. ***`);
-    if (reportedSize > 0 && Math.floor(reportedSize / 40) > logs.length + 5) {
-      ts(`*** TRUNCATION CONFIRMED: device has ~${Math.floor(reportedSize / 40)} records but only ${logs.length} were read (chunk-boundary bug). ***`);
+    try {
+      logs = await readAllAttendances(zk, (recvBytes, totalSize) => {
+        if (totalSize > reportedSize) reportedSize = totalSize;
+      });
+      try { await zk.freeData(); } catch (_) {}
+      ts(`Robust read OK — ${logs.length} record(s) parsed from ${reportedSize} bytes (device reports ~${Math.floor(reportedSize / 40)} records).`);
+    } catch (e) {
+      ts(`Robust read failed (${e?.message}); falling back to library getAttendances().`);
+      const res = await zk.getAttendances();
+      logs = res.data || [];
+      ts(`Fallback read returned ${logs.length} record(s).`);
     }
 
     // Re-enable the device as soon as the read is done — don't hold it disabled
@@ -127,21 +262,28 @@ async function syncAttendance() {
       ts(`Record date range: ${min.toLocaleString()} → ${max.toLocaleString()}`);
     }
 
-    // Process ALL returned records (not just current month). The unique
-    // constraint on (deviceUserId, punchTime) dedups, so already-saved punches
-    // are cheaply skipped. This guarantees today's punches are never filtered out.
+    // Process ALL returned records. Bulk-insert with skipDuplicates so the
+    // unique constraint (deviceUserId, punchTime) cheaply drops already-saved
+    // punches — far faster than 15k individual inserts every cron run.
     const total = valid.length;
     ts(`Processing ${total} record(s)...`);
 
-    for (let i = 0; i < valid.length; i++) {
-      if (i > 0 && i % 50 === 0) {
-        process.stdout.write(`  ${i}/${total} done, ${recordCount} new...\r`);
-      }
-      const saved = await savePunch(valid[i]);
-      if (saved) recordCount++; else skipped++;
-    }
+    const rows = valid.map(l => ({
+      deviceUserId: String(l.deviceUserId),
+      punchTime:    new Date(l.recordTime),
+      punchType:    l.type ?? 0,
+    }));
 
-    process.stdout.write('\n');
+    const BATCH = 2000;
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const res = await prisma.attendanceLog.createMany({
+        data: rows.slice(i, i + BATCH),
+        skipDuplicates: true,
+      });
+      recordCount += res.count;
+    }
+    skipped = total - recordCount;
+
     ts(`Sync done. New: ${recordCount}, Already existed: ${skipped}.`);
 
     await prisma.syncLog.create({
