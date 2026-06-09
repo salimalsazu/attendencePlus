@@ -30,6 +30,7 @@ services:
       ZK_IP: ${ZK_IP}
       ZK_PORT: ${ZK_PORT:-4370}
       ZK_TIMEOUT: ${ZK_TIMEOUT:-10000}
+      ZK_TZ_OFFSET_HOURS: ${ZK_TZ_OFFSET_HOURS:-6}
       PORT: 4000
     depends_on:
       postgres:

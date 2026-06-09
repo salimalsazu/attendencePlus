@@ -5,6 +5,11 @@ const ZK_IP      = process.env.ZK_IP      || '192.168.10.3';
 const ZK_PORT    = parseInt(process.env.ZK_PORT    || '4370');
 const ZK_TIMEOUT = parseInt(process.env.ZK_TIMEOUT || '10000');
 
+// ZK devices return timestamps in their local timezone with no TZ info.
+// The backend container runs UTC, so new Date(recordTime) misreads local time as UTC.
+// Subtract the device's UTC offset to recover the true UTC instant.
+const ZK_TZ_OFFSET_MS = parseInt(process.env.ZK_TZ_OFFSET_HOURS ?? '6') * 3_600_000;
+
 function ts(msg) {
   process.stdout.write(`[${new Date().toLocaleTimeString()}] ${msg}\n`);
 }
@@ -12,10 +17,11 @@ function ts(msg) {
 async function savePunch(log) {
   if (!log.deviceUserId || !log.recordTime) return;
   try {
+    const punchTime = new Date(new Date(log.recordTime).getTime() - ZK_TZ_OFFSET_MS);
     await prisma.attendanceLog.create({
       data: {
         deviceUserId: String(log.deviceUserId),
-        punchTime:    new Date(log.recordTime),
+        punchTime,
         punchType:    log.type ?? 0,
       },
     });
