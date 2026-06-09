@@ -61,6 +61,22 @@ function readAllAttendances(zk, onProgress = () => {}) {
         records.push({ ...rec, ip: tcp.ip });
         d = d.subarray(40);
       }
+
+      // Hex dump last 3 records to diagnose correct timestamp offset.
+      const totalRecs = Math.floor(body.length / 40);
+      const dumpCount = Math.min(3, totalRecs);
+      for (let i = totalRecs - dumpCount; i < totalRecs; i++) {
+        const raw = body.subarray(i * 40, (i + 1) * 40);
+        const hex = raw.toString('hex').match(/.{1,2}/g).join(' ');
+        // Also try reading UInt32LE at common offsets: 24, 27, 28, 32
+        const t24 = raw.readUInt32LE(24);
+        const t27 = raw.readUInt32LE(27);
+        const t28 = raw.readUInt32LE(28);
+        const t32 = raw.readUInt32LE(32);
+        ts(`Record[${i}] hex: ${hex}`);
+        ts(`Record[${i}] time@24=${t24} time@27=${t27} time@28=${t28} time@32=${t32}`);
+      }
+
       resolve(records);
     };
 
