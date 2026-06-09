@@ -29,6 +29,7 @@ services:
       ZK_IP: ${ZK_IP}
       ZK_PORT: ${ZK_PORT:-4370}
       ZK_TIMEOUT: ${ZK_TIMEOUT:-10000}
+      SYNC_INTERVAL_MINUTES: ${SYNC_INTERVAL_MINUTES:-10}
       PORT: 4000
       TZ: Asia/Dhaka
     depends_on:
