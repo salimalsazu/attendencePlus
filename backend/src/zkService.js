@@ -98,7 +98,15 @@ async function syncAttendance() {
   }
 }
 
-// Real-time listener — stays connected, device pushes each punch instantly
+// Real-time listener — stays connected, device pushes each punch instantly.
+// Includes:
+//   • Heartbeat log every 10 minutes so operators can confirm the listener is alive.
+//   • Watchdog: if no punch arrives for 2 hours the connection is assumed stale
+//     (device may have stopped sending events after a reboot) and is recycled so
+//     the CMD_REG_EVENT subscription is re-sent on reconnect.
+const HEARTBEAT_MS = 10 * 60 * 1000;   // log "still alive" every 10 min
+const WATCHDOG_MS  =  2 * 60 * 60 * 1000; // force reconnect after 2 h of silence
+
 async function startRealTimeListener() {
   let retryDelay = 5000;
 
@@ -108,6 +116,7 @@ async function startRealTimeListener() {
       ts('Starting real-time listener...');
 
       // closedPromise resolves when the TCP socket fires its 'close' event
+      // OR when the watchdog forces a reconnect.
       let resolveClose;
       const closedPromise = new Promise(res => { resolveClose = res; });
 
@@ -115,15 +124,37 @@ async function startRealTimeListener() {
       ts('Real-time listener connected. Waiting for punches...');
       retryDelay = 5000; // reset on successful connect
 
-      // getRealTimeLogs registers the data listener and returns immediately —
-      // we must wait on closedPromise to keep this loop alive until the device
-      // drops the connection, rather than reconnecting on every iteration.
+      // Heartbeat — logs every 10 min to confirm the loop is alive
+      const heartbeat = setInterval(() => {
+        ts('Real-time listener alive — waiting for punches...');
+      }, HEARTBEAT_MS);
+
+      // Watchdog — reconnect if the device goes silent for 2 hours.
+      // After a device reboot the TCP connection may stay open but the
+      // device stops pushing events; recycling the connection re-sends
+      // the CMD_REG_EVENT registration command.
+      let watchdog = setTimeout(() => {
+        ts('Watchdog: no punch received for 2 h — recycling connection to re-register events...');
+        resolveClose();
+      }, WATCHDOG_MS);
+
+      const resetWatchdog = () => {
+        clearTimeout(watchdog);
+        watchdog = setTimeout(() => {
+          ts('Watchdog: no punch received for 2 h — recycling connection...');
+          resolveClose();
+        }, WATCHDOG_MS);
+      };
+
       await zk.getRealTimeLogs(async (data) => {
+        resetWatchdog(); // got activity — reset the 2-hour timer
         ts(`Real-time punch received — User: ${data.deviceUserId}`);
         await savePunch(data);
       });
 
-      await closedPromise; // block here until socket closes
+      await closedPromise; // block here until socket closes or watchdog fires
+      clearInterval(heartbeat);
+      clearTimeout(watchdog);
       ts('Real-time connection closed. Reconnecting...');
 
     } catch (err) {
