@@ -280,13 +280,21 @@ async function syncAttendance() {
       ts(`Record date range: ${min.toLocaleString()} → ${max.toLocaleString()}`);
     }
 
-    // Process ALL returned records. Bulk-insert with skipDuplicates so the
-    // unique constraint (deviceUserId, punchTime) cheaply drops already-saved
-    // punches — far faster than 15k individual inserts every cron run.
-    const total = valid.length;
-    ts(`Processing ${total} record(s)...`);
+    // Historical data is already synced — we only need to save records from the
+    // last SYNC_LOOKBACK_DAYS (default: today only). The whole log is read to
+    // reach today's records (they sit in the last chunks), but we insert just
+    // the recent ones, keeping every cron run light. skipDuplicates makes
+    // re-saving the same punch a no-op.
+    const lookbackDays = parseInt(process.env.SYNC_LOOKBACK_DAYS ?? '0');
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - lookbackDays);
+    cutoff.setHours(0, 0, 0, 0);
 
-    const rows = valid.map(l => ({
+    const recent = valid.filter(l => new Date(l.recordTime) >= cutoff);
+    const total = recent.length;
+    ts(`Saving ${total} record(s) from ${cutoff.toLocaleDateString()} onward (read ${valid.length} total).`);
+
+    const rows = recent.map(l => ({
       deviceUserId: String(l.deviceUserId),
       punchTime:    new Date(l.recordTime),
       punchType:    l.type ?? 0,
