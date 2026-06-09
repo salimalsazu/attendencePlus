@@ -62,18 +62,10 @@ async function syncAttendance() {
     const { data: logs } = await zk.getAttendances();
     ts(`Device returned ${logs.length} total record(s).`);
 
-    // Debug: show date range of records returned by device
-    const validLogs = logs.filter(l => l.recordTime);
-    if (validLogs.length > 0) {
-      const dates = validLogs.map(l => new Date(l.recordTime)).sort((a, b) => a - b);
-      ts(`Device record date range: ${dates[0].toISOString()} → ${dates[dates.length - 1].toISOString()}`);
-      ts(`Sample latest 3: ${dates.slice(-3).map(d => d.toISOString()).join(', ')}`);
-    }
-
     const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     const monthLogs    = logs.filter(l => l.recordTime && new Date(l.recordTime) >= startOfMonth);
     const total        = monthLogs.length;
-    ts(`Processing ${total} record(s) for current month... (startOfMonth: ${startOfMonth.toISOString()})`);
+    ts(`Processing ${total} record(s) for current month...`);
 
     for (let i = 0; i < monthLogs.length; i++) {
       if (i > 0 && i % 20 === 0) {
