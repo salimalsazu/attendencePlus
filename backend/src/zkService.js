@@ -86,7 +86,7 @@ async function syncAttendance() {
 
   } catch (err) {
     process.stdout.write('\n');
-    ts(`Sync error: ${err?.message || String(err)}`);
+    ts(`Sync error: ${err?.message || JSON.stringify(err)}`);
     await prisma.syncLog.create({
       data: { recordCount: 0, status: 'error', message: err.message },
     });
@@ -126,7 +126,7 @@ async function startRealTimeListener() {
       ts('Real-time connection closed. Reconnecting...');
 
     } catch (err) {
-      ts(`Real-time listener error: ${err.message}. Retrying in ${retryDelay / 1000}s...`);
+      ts(`Real-time listener error: ${err?.message || JSON.stringify(err)}. Retrying in ${retryDelay / 1000}s...`);
     } finally {
       try { await zk.disconnect(); } catch (_) {}
     }
