@@ -60,7 +60,6 @@ export default function SettingsPage() {
   });
   const [loading, setLoading] = useState(true);
   const [saving,  setSaving]  = useState(false);
-  const [sendingReport, setSendingReport] = useState(false);
   const [manualEmail, setManualEmail] = useState('');
   const [sendingManual, setSendingManual] = useState(false);
 
@@ -81,22 +80,6 @@ export default function SettingsPage() {
       notifications.show({ message: String(err), color: 'red' });
     } finally {
       setSaving(false);
-    }
-  };
-
-  const sendTestReport = async () => {
-    setSendingReport(true);
-    try {
-      const result = await api.sendTestReport();
-      notifications.show({
-        message: `Report sent to ${result.recipient} (Present: ${result.summary.totalPresent}, Late: ${result.summary.totalLate}, Absent: ${result.summary.totalAbsent})`,
-        color: 'green',
-        icon: <IconCheck size={16} />,
-      });
-    } catch (err) {
-      notifications.show({ message: String(err), color: 'red' });
-    } finally {
-      setSendingReport(false);
     }
   };
 
@@ -296,39 +279,27 @@ export default function SettingsPage() {
 
         <Divider my="lg" label="Test & Manual Send" labelPosition="left" />
 
-        <Group gap="md" align="flex-end" wrap="wrap">
+        <Group gap="xs" align="flex-end">
+          <div>
+            <Text fz="xs" fw={600} c="#374151" mb={6}>Send to a specific email</Text>
+            <TextInput
+              value={manualEmail}
+              onChange={e => setManualEmail(e.currentTarget.value)}
+              placeholder="someone@example.com"
+              size="md"
+              w={240}
+            />
+          </div>
           <Button
-            leftSection={<IconMailForward size={16} />}
-            onClick={sendTestReport}
-            loading={sendingReport}
-            variant="light"
+            leftSection={<IconSend size={16} />}
+            onClick={sendManualReport}
+            loading={sendingManual}
+            disabled={!manualEmail.trim()}
+            variant="outline"
             size="md"
           >
-            Send Test Report Email
+            Send
           </Button>
-
-          <Group gap="xs" align="flex-end">
-            <div>
-              <Text fz="xs" fw={600} c="#374151" mb={6}>Send to a specific email</Text>
-              <TextInput
-                value={manualEmail}
-                onChange={e => setManualEmail(e.currentTarget.value)}
-                placeholder="someone@example.com"
-                size="md"
-                w={240}
-              />
-            </div>
-            <Button
-              leftSection={<IconSend size={16} />}
-              onClick={sendManualReport}
-              loading={sendingManual}
-              disabled={!manualEmail.trim()}
-              variant="outline"
-              size="md"
-            >
-              Send
-            </Button>
-          </Group>
         </Group>
       </Paper>
 

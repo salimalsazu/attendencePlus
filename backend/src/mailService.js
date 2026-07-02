@@ -32,41 +32,90 @@ function buildDailyReportHtml({ date, rows }) {
   const dateStr = fmtDate(date);
 
   const tableRows = rows.map(r => `
-      <tr style="border-bottom:1px solid #f0f0f0;">
-        <td style="padding:10px 12px;font-size:13px;color:#111827;font-weight:500;">${escapeHtml(r.employee.name)}</td>
-        <td style="padding:10px 12px;font-size:13px;color:#6b7280;">${escapeHtml(r.employee.department || '—')}</td>
-        <td style="padding:10px 12px;font-size:13px;color:#374151;">${fmtTime(r.firstPunch)}</td>
-        <td style="padding:10px 12px;font-size:13px;color:#374151;">${r.delayMins > 0 ? r.delayMins + ' min' : '—'}</td>
-      </tr>`).join('');
+              <tr>
+                <td class="name-cell">${escapeHtml(r.employee.name)}</td>
+                <td class="dept-col dept-cell">${escapeHtml(r.employee.department || '—')}</td>
+                <td>${fmtTime(r.firstPunch)}</td>
+                <td>${r.delayMins > 0 ? r.delayMins + ' min' : '—'}</td>
+              </tr>`).join('');
 
-  return `
-  <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#f3f4f6;padding:24px;">
-    <div style="max-width:720px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
-      <div style="background:#0f1629;padding:24px 28px;">
-        <div style="font-size:12px;color:#93c5fd;font-weight:600;letter-spacing:.05em;text-transform:uppercase;">AttendTrack Pro</div>
-        <div style="font-size:20px;color:#ffffff;font-weight:700;margin-top:4px;">Daily Attendance Report</div>
-        <div style="font-size:13px;color:#cbd5e1;margin-top:2px;">${dateStr}</div>
-      </div>
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<title>Daily Attendance Report</title>
+<style>
+  body, table, td, a { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
+  body { margin:0; padding:0; width:100% !important; background:#f3f4f6; font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
+  table { border-collapse:collapse; }
+  .email-wrapper { width:100%; background:#f3f4f6; padding:24px 12px; }
+  .email-container { max-width:640px; width:100%; margin:0 auto; background:#ffffff; border-radius:12px; overflow:hidden; border:1px solid #e5e7eb; }
+  .header { background:#0f1629; padding:24px 28px; }
+  .brand { font-size:12px; color:#93c5fd; font-weight:600; letter-spacing:.05em; text-transform:uppercase; }
+  .title { font-size:20px; color:#ffffff; font-weight:700; margin-top:4px; }
+  .subtitle { font-size:13px; color:#cbd5e1; margin-top:2px; }
+  .body-pad { padding:20px 24px 24px; }
+  .report { width:100%; }
+  .report th { padding:10px 12px; text-align:left; font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:.03em; border-bottom:2px solid #e5e7eb; white-space:nowrap; }
+  .report td { padding:10px 12px; font-size:13px; color:#374151; border-bottom:1px solid #f0f0f0; }
+  .name-cell { color:#111827; font-weight:500; }
+  .dept-cell { color:#6b7280; }
+  .footer { padding:16px 24px; background:#f9fafb; border-top:1px solid #e5e7eb; font-size:12px; color:#9ca3af; }
 
-      <div style="padding:20px 24px 24px;">
-        <table role="presentation" width="100%" style="border-collapse:collapse;">
-          <thead>
-            <tr style="border-bottom:2px solid #e5e7eb;">
-              <th style="padding:10px 12px;text-align:left;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.03em;">Name</th>
-              <th style="padding:10px 12px;text-align:left;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.03em;">Department</th>
-              <th style="padding:10px 12px;text-align:left;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.03em;">Check-In</th>
-              <th style="padding:10px 12px;text-align:left;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.03em;">Delay</th>
+  @media only screen and (max-width:600px) {
+    .email-wrapper { padding:12px 6px !important; }
+    .header { padding:16px 14px !important; }
+    .title { font-size:17px !important; }
+    .body-pad { padding:12px 8px 16px !important; }
+    .report th, .report td { padding:8px 6px !important; font-size:12px !important; }
+    .dept-col { display:none !important; }
+    .footer { padding:14px 16px !important; }
+  }
+</style>
+</head>
+<body>
+  <div class="email-wrapper">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td align="center">
+          <table role="presentation" class="email-container" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td class="header">
+                <div class="brand">AttendTrack Pro</div>
+                <div class="title">Daily Attendance Report</div>
+                <div class="subtitle">${dateStr}</div>
+              </td>
             </tr>
-          </thead>
-          <tbody>${tableRows}</tbody>
-        </table>
-      </div>
-
-      <div style="padding:16px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;">
-        <div style="font-size:12px;color:#9ca3af;">This is an automated report generated by AttendTrack Pro. Please do not reply to this email.</div>
-      </div>
-    </div>
-  </div>`;
+            <tr>
+              <td class="body-pad">
+                <table role="presentation" class="report" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th class="dept-col">Department</th>
+                      <th>Check-In</th>
+                      <th>Delay</th>
+                    </tr>
+                  </thead>
+                  <tbody>${tableRows}
+                  </tbody>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td class="footer">
+                This is an automated report generated by AttendTrack Pro. Please do not reply to this email.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </div>
+</body>
+</html>`;
 }
 
 function escapeHtml(str) {
