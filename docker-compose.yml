@@ -33,6 +33,11 @@ services:
       SYNC_LOOKBACK_DAYS: ${SYNC_LOOKBACK_DAYS:-0}
       PORT: 4000
       TZ: Asia/Dhaka
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      REPORT_RECEIVER_EMAIL: ${REPORT_RECEIVER_EMAIL}
     depends_on:
       postgres:
         condition: service_healthy
