@@ -15,7 +15,10 @@ router.get('/', async (req, res) => {
 // PUT /api/settings — body: { office_start, office_end, late_grace_mins, early_leave_grace_mins }
 router.put('/', async (req, res) => {
   try {
-    const allowed = ['office_start', 'office_end', 'late_grace_mins', 'early_leave_grace_mins', 'weekly_holidays'];
+    const allowed = [
+      'office_start', 'office_end', 'late_grace_mins', 'early_leave_grace_mins', 'weekly_holidays',
+      'report_recipients', 'report_time',
+    ];
     const entries = Object.entries(req.body).filter(([k]) => allowed.includes(k));
 
     for (const [key, value] of entries) {

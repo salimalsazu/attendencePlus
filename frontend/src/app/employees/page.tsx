@@ -31,6 +31,7 @@ import {
   IconRefresh,
   IconSearch,
   IconUser,
+  IconUserCheck,
   IconUserOff,
   IconUsers,
 } from '@tabler/icons-react';
@@ -354,7 +355,7 @@ export default function EmployeesPage() {
                         loading={statusBusyId === emp.deviceUserId}
                         onClick={() => toggleStatus(emp)}
                       >
-                        {emp.status === 'active' ? <IconUserOff size={15} /> : <IconCheck size={15} />}
+                        {emp.status === 'active' ? <IconUserOff size={15} /> : <IconUserCheck size={15} />}
                       </ActionIcon>
                     </Tooltip>
                   </Group>

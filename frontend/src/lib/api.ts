@@ -198,10 +198,10 @@ export const api = {
     }),
 
   // Reports
-  sendTestReport: (date?: string) =>
+  sendTestReport: (opts?: { date?: string; to?: string }) =>
     fetchJSON<{ ok: boolean; recipient: string; summary: ReportSummary }>('/api/reports/send-test', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(date ? { date } : {}),
+      body: JSON.stringify(opts ?? {}),
     }),
 };

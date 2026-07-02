@@ -101,6 +101,8 @@ export interface AppSettings {
   late_grace_mins: string;
   early_leave_grace_mins: string;
   weekly_holidays: string; // comma-separated JS day nums: 0=Sun…6=Sat
+  report_recipients: string; // comma-separated emails
+  report_time: string;       // "HH:MM", 24h, Asia/Dhaka
 }
 
 export interface ReportSummary {

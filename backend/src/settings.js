@@ -7,6 +7,8 @@ const DEFAULTS = {
   late_grace_mins:        '15',
   early_leave_grace_mins: '15',
   weekly_holidays:        '5',   // comma-separated JS day nums: 0=Sun 1=Mon … 6=Sat
+  report_recipients:      process.env.REPORT_RECEIVER_EMAIL || '', // comma-separated emails
+  report_time:            '11:00', // HH:MM, 24h, Asia/Dhaka — when the daily report auto-sends
 };
 
 // Returns { office_start, office_end, late_grace_mins, early_leave_grace_mins }

@@ -9,12 +9,14 @@ import {
   NumberInput,
   Paper,
   Stack,
+  TagsInput,
   Text,
+  TextInput,
   Title,
 } from '@mantine/core';
 import { TimeInput } from '@mantine/dates';
 import { notifications } from '@mantine/notifications';
-import { IconCalendarOff, IconCheck, IconClock, IconDeviceFloppy, IconMailForward, IconSettings } from '@tabler/icons-react';
+import { IconCalendarOff, IconCheck, IconClock, IconDeviceFloppy, IconMailForward, IconSend, IconSettings } from '@tabler/icons-react';
 import { api } from '@/lib/api';
 import type { AppSettings } from '@/lib/types';
 
@@ -37,6 +39,15 @@ function serializeHolidays(arr: string[]): string {
   return arr.join(',');
 }
 
+function parseEmails(str: string | undefined): string[] {
+  if (!str) return [];
+  return str.split(',').map(s => s.trim()).filter(s => s !== '');
+}
+
+function serializeEmails(arr: string[]): string {
+  return arr.join(',');
+}
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings>({
     office_start:           '09:30',
@@ -44,10 +55,14 @@ export default function SettingsPage() {
     late_grace_mins:        '15',
     early_leave_grace_mins: '15',
     weekly_holidays:        '',
+    report_recipients:      '',
+    report_time:            '11:00',
   });
   const [loading, setLoading] = useState(true);
   const [saving,  setSaving]  = useState(false);
   const [sendingReport, setSendingReport] = useState(false);
+  const [manualEmail, setManualEmail] = useState('');
+  const [sendingManual, setSendingManual] = useState(false);
 
   useEffect(() => {
     api.getSettings()
@@ -82,6 +97,25 @@ export default function SettingsPage() {
       notifications.show({ message: String(err), color: 'red' });
     } finally {
       setSendingReport(false);
+    }
+  };
+
+  const sendManualReport = async () => {
+    const to = manualEmail.trim();
+    if (!to) return;
+    setSendingManual(true);
+    try {
+      const result = await api.sendTestReport({ to });
+      notifications.show({
+        message: `Report sent to ${result.recipient}`,
+        color: 'green',
+        icon: <IconCheck size={16} />,
+      });
+      setManualEmail('');
+    } catch (err) {
+      notifications.show({ message: String(err), color: 'red' });
+    } finally {
+      setSendingManual(false);
     }
   };
 
@@ -229,18 +263,73 @@ export default function SettingsPage() {
           <Text fw={700} fz="md" c="#111827">Daily Attendance Report Email</Text>
         </Group>
         <Text fz="sm" c="dimmed" mb="lg">
-          A daily attendance report is automatically emailed at <strong>11:00 AM</strong> every day.
-          Use the button below to send a test copy of today&apos;s report right now.
+          A daily attendance report is automatically emailed to the recipients below at the configured time, every day.
         </Text>
-        <Button
-          leftSection={<IconMailForward size={16} />}
-          onClick={sendTestReport}
-          loading={sendingReport}
-          variant="light"
-          size="md"
-        >
-          Send Test Report Email
-        </Button>
+
+        <Stack gap="lg">
+          <div>
+            <Text fz="sm" fw={600} c="#374151" mb={6}>Recipient Emails</Text>
+            <TagsInput
+              value={parseEmails(settings.report_recipients)}
+              onChange={vals => setSettings(s => ({ ...s, report_recipients: serializeEmails(vals) }))}
+              placeholder="Type an email and press Enter"
+              disabled={loading}
+              size="md"
+              splitChars={[',', ' ', ';']}
+            />
+            <Text fz="xs" c="dimmed" mt={4}>Add one or more emails — everyone here receives the daily report automatically</Text>
+          </div>
+
+          <div>
+            <Text fz="sm" fw={600} c="#374151" mb={6}>Send Time</Text>
+            <TimeInput
+              value={settings.report_time}
+              onChange={e => setSettings(s => ({ ...s, report_time: e.currentTarget.value }))}
+              leftSection={<IconClock size={15} />}
+              disabled={loading}
+              size="md"
+              w={160}
+            />
+            <Text fz="xs" c="dimmed" mt={4}>The report is auto-sent once a day at this time (Asia/Dhaka)</Text>
+          </div>
+        </Stack>
+
+        <Divider my="lg" label="Test & Manual Send" labelPosition="left" />
+
+        <Group gap="md" align="flex-end" wrap="wrap">
+          <Button
+            leftSection={<IconMailForward size={16} />}
+            onClick={sendTestReport}
+            loading={sendingReport}
+            variant="light"
+            size="md"
+          >
+            Send Test Report Email
+          </Button>
+
+          <Group gap="xs" align="flex-end">
+            <div>
+              <Text fz="xs" fw={600} c="#374151" mb={6}>Send to a specific email</Text>
+              <TextInput
+                value={manualEmail}
+                onChange={e => setManualEmail(e.currentTarget.value)}
+                placeholder="someone@example.com"
+                size="md"
+                w={240}
+              />
+            </div>
+            <Button
+              leftSection={<IconSend size={16} />}
+              onClick={sendManualReport}
+              loading={sendingManual}
+              disabled={!manualEmail.trim()}
+              variant="outline"
+              size="md"
+            >
+              Send
+            </Button>
+          </Group>
+        </Group>
       </Paper>
 
       <Group>

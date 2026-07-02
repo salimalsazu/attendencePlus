@@ -1,5 +1,6 @@
 const nodemailer = require('nodemailer');
 const { getDailyReport } = require('./reportService');
+const { getSettings } = require('./settings');
 
 function getTransporter() {
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
@@ -75,8 +76,13 @@ function escapeHtml(str) {
 }
 
 async function sendDailyReportEmail({ date = new Date(), to } = {}) {
-  const recipient = to || process.env.REPORT_RECEIVER_EMAIL;
-  if (!recipient) throw new Error('No recipient configured — set REPORT_RECEIVER_EMAIL in .env');
+  let recipient = Array.isArray(to) ? to.join(',') : to;
+  if (!recipient) {
+    const settings = await getSettings();
+    recipient = settings.report_recipients || process.env.REPORT_RECEIVER_EMAIL || '';
+  }
+  recipient = recipient.trim();
+  if (!recipient) throw new Error('No recipient configured — add at least one recipient email in Settings.');
 
   const report = await getDailyReport(date);
   const html = buildDailyReportHtml(report);
