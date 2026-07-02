@@ -13,6 +13,7 @@ model Employee {
   role         String?
   department   String?
   designation  String?
+  status       String   @default("active") // "active" | "inactive"
   createdAt    DateTime @default(now())
 }
 

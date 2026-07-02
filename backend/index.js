@@ -7,6 +7,7 @@ const employeeRoutes   = require('./src/routes/employees');
 const dashboardRoutes  = require('./src/routes/dashboard');
 const deviceRoutes     = require('./src/routes/devices');
 const settingsRoutes   = require('./src/routes/settings');
+const reportRoutes     = require('./src/routes/reports');
 const authRoutes       = require('./src/routes/auth');
 const { requireAuth }  = require('./src/middleware/auth');
 const { startScheduler, getNextRunAt } = require('./src/scheduler');
@@ -32,6 +33,7 @@ app.use('/api/employees',  employeeRoutes);
 app.use('/api/dashboard',  dashboardRoutes);
 app.use('/api/devices',    deviceRoutes);
 app.use('/api/settings',   settingsRoutes);
+app.use('/api/reports',    reportRoutes);
 
 app.listen(PORT, async () => {
   console.log(`Server running on http://localhost:${PORT}`);

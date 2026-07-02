@@ -1,6 +1,6 @@
 const router  = require('express').Router();
 const prisma   = require('../prismaClient');
-const { syncAttendance } = require('../zkService');
+const { syncAttendance, diagnoseZk } = require('../zkService');
 
 // GET /api/devices
 router.get('/', async (req, res) => {
@@ -20,6 +20,17 @@ router.get('/stats', async (req, res) => {
     const online  = devices.filter(d => d.status === 'online').length;
     const offline = devices.filter(d => d.status === 'offline').length;
     res.json({ total, online, offline, syncing: total - online - offline });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/devices/diagnostics — checks if the backend can reach the ZK device.
+// Useful when the device is on a remote LAN reachable only through WireGuard.
+router.get('/diagnostics', async (req, res) => {
+  try {
+    const result = await diagnoseZk();
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -13,6 +13,7 @@ import type {
   Employee,
   EmployeeHistory,
   MonthlyReport,
+  ReportSummary,
   SyncLog,
   SyncResult,
   TrendPoint,
@@ -106,6 +107,13 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  updateEmployeeStatus: (deviceUserId: string, status: 'active' | 'inactive') =>
+    fetchJSON<Employee>(`/api/employees/${encodeURIComponent(deviceUserId)}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    }),
+
   // Dashboard
   dashboardStats: (date?: string) =>
     fetchJSON<DashboardStats>(`/api/dashboard/stats${date ? `?date=${date}` : ''}`),
@@ -187,5 +195,13 @@ export const api = {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
+    }),
+
+  // Reports
+  sendTestReport: (date?: string) =>
+    fetchJSON<{ ok: boolean; recipient: string; summary: ReportSummary }>('/api/reports/send-test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(date ? { date } : {}),
     }),
 };

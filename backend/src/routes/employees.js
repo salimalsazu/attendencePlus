@@ -59,4 +59,22 @@ router.patch('/:id', async (req, res) => {
   }
 });
 
+// PATCH /api/employees/:id/status — activate or deactivate an employee.
+// Deactivated employees are excluded from the attendance report and daily email report.
+router.patch('/:id/status', async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (status !== 'active' && status !== 'inactive')
+      return res.status(400).json({ error: 'status must be "active" or "inactive"' });
+
+    const emp = await prisma.employee.update({
+      where: { deviceUserId: req.params.id },
+      data:  { status },
+    });
+    res.json(emp);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

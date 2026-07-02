@@ -31,6 +31,7 @@ import {
   IconRefresh,
   IconSearch,
   IconUser,
+  IconUserOff,
   IconUsers,
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
@@ -49,6 +50,7 @@ export default function EmployeesPage() {
   const [pageSize,   setPageSize]   = useState(20);
   const [editTarget, setEditTarget] = useState<Employee | null>(null);
   const [saving,     setSaving]     = useState(false);
+  const [statusBusyId, setStatusBusyId] = useState<string | null>(null);
 
   const form = useForm({
     initialValues: { name: '', department: '', designation: '', role: '' },
@@ -95,6 +97,24 @@ export default function EmployeesPage() {
       notifications.show({ message: String(err), color: 'red' });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const toggleStatus = async (emp: Employee) => {
+    const nextStatus = emp.status === 'active' ? 'inactive' : 'active';
+    setStatusBusyId(emp.deviceUserId);
+    try {
+      const updated = await api.updateEmployeeStatus(emp.deviceUserId, nextStatus);
+      setEmployees(prev => prev.map(e => e.deviceUserId === updated.deviceUserId ? updated : e));
+      notifications.show({
+        message: `${updated.name} marked ${nextStatus === 'active' ? 'active' : 'inactive'}`,
+        color: nextStatus === 'active' ? 'green' : 'gray',
+        icon: <IconCheck size={16} />,
+      });
+    } catch (err) {
+      notifications.show({ message: String(err), color: 'red' });
+    } finally {
+      setStatusBusyId(null);
     }
   };
 
@@ -230,7 +250,7 @@ export default function EmployeesPage() {
         <Table highlightOnHover verticalSpacing="sm" style={{ fontSize: 14 }}>
           <Table.Thead style={{ background: '#1e3a5f' }}>
             <Table.Tr>
-              {['#', 'Employee', 'Device User ID', 'Department', 'Designation', 'Role', 'Joined', 'Actions']
+              {['#', 'Employee', 'Device User ID', 'Department', 'Designation', 'Role', 'Status', 'Joined', 'Actions']
                 .map(h => (
                   <Table.Th key={h} style={{ color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}>
                     {h}
@@ -249,7 +269,7 @@ export default function EmployeesPage() {
                     <Stack gap={4}><Skeleton h={13} w={120} /><Skeleton h={11} w={80} /></Stack>
                   </Group>
                 </Table.Td>
-                {Array.from({ length: 5 }).map((__, j) => (
+                {Array.from({ length: 6 }).map((__, j) => (
                   <Table.Td key={j}><Skeleton h={13} w={80} /></Table.Td>
                 ))}
                 <Table.Td><Skeleton circle h={28} w={28} /></Table.Td>
@@ -305,23 +325,46 @@ export default function EmployeesPage() {
                     : <Text fz="sm" c="dimmed">—</Text>}
                 </Table.Td>
 
+                <Table.Td>
+                  <Badge
+                    variant="light"
+                    color={emp.status === 'active' ? 'green' : 'gray'}
+                    size="sm"
+                  >
+                    {emp.status === 'active' ? 'Active' : 'Inactive'}
+                  </Badge>
+                </Table.Td>
+
                 <Table.Td fz="sm" c="dimmed">
                   {dayjs(emp.createdAt).format('DD MMM YYYY')}
                 </Table.Td>
 
                 <Table.Td>
-                  <Tooltip label="Edit employee info" withArrow>
-                    <ActionIcon variant="subtle" color="blue" size="sm" onClick={() => openEdit(emp)}>
-                      <IconEdit size={15} />
-                    </ActionIcon>
-                  </Tooltip>
+                  <Group gap={4} wrap="nowrap">
+                    <Tooltip label="Edit employee info" withArrow>
+                      <ActionIcon variant="subtle" color="blue" size="sm" onClick={() => openEdit(emp)}>
+                        <IconEdit size={15} />
+                      </ActionIcon>
+                    </Tooltip>
+                    <Tooltip label={emp.status === 'active' ? 'Deactivate employee' : 'Activate employee'} withArrow>
+                      <ActionIcon
+                        variant="subtle"
+                        color={emp.status === 'active' ? 'red' : 'green'}
+                        size="sm"
+                        loading={statusBusyId === emp.deviceUserId}
+                        onClick={() => toggleStatus(emp)}
+                      >
+                        {emp.status === 'active' ? <IconUserOff size={15} /> : <IconCheck size={15} />}
+                      </ActionIcon>
+                    </Tooltip>
+                  </Group>
                 </Table.Td>
               </Table.Tr>
             ))}
 
             {!loading && filtered.length === 0 && (
               <Table.Tr>
-                <Table.Td colSpan={8} ta="center" py="xl" c="dimmed">
+                <Table.Td colSpan={9} ta="center" py="xl" c="dimmed">
                   {employees.length === 0
                     ? 'No employees yet. Click "Sync from Device" to import employees.'
                     : 'No employees match the current filter.'}

@@ -14,7 +14,7 @@ import {
 } from '@mantine/core';
 import { TimeInput } from '@mantine/dates';
 import { notifications } from '@mantine/notifications';
-import { IconCalendarOff, IconClock, IconDeviceFloppy, IconSettings } from '@tabler/icons-react';
+import { IconCalendarOff, IconCheck, IconClock, IconDeviceFloppy, IconMailForward, IconSettings } from '@tabler/icons-react';
 import { api } from '@/lib/api';
 import type { AppSettings } from '@/lib/types';
 
@@ -47,6 +47,7 @@ export default function SettingsPage() {
   });
   const [loading, setLoading] = useState(true);
   const [saving,  setSaving]  = useState(false);
+  const [sendingReport, setSendingReport] = useState(false);
 
   useEffect(() => {
     api.getSettings()
@@ -65,6 +66,22 @@ export default function SettingsPage() {
       notifications.show({ message: String(err), color: 'red' });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const sendTestReport = async () => {
+    setSendingReport(true);
+    try {
+      const result = await api.sendTestReport();
+      notifications.show({
+        message: `Report sent to ${result.recipient} (Present: ${result.summary.totalPresent}, Late: ${result.summary.totalLate}, Absent: ${result.summary.totalAbsent})`,
+        color: 'green',
+        icon: <IconCheck size={16} />,
+      });
+    } catch (err) {
+      notifications.show({ message: String(err), color: 'red' });
+    } finally {
+      setSendingReport(false);
     }
   };
 
@@ -203,6 +220,27 @@ export default function SettingsPage() {
             <Text fz="sm" c="#16a34a" fw={500}>No weekly holidays configured — all days are working days.</Text>
           </Paper>
         )}
+      </Paper>
+
+      {/* Daily Email Report */}
+      <Paper withBorder radius="md" p="xl" mb="md">
+        <Group gap="xs" mb="md">
+          <IconMailForward size={18} color="#2563eb" />
+          <Text fw={700} fz="md" c="#111827">Daily Attendance Report Email</Text>
+        </Group>
+        <Text fz="sm" c="dimmed" mb="lg">
+          A daily attendance report is automatically emailed at <strong>11:00 AM</strong> every day.
+          Use the button below to send a test copy of today&apos;s report right now.
+        </Text>
+        <Button
+          leftSection={<IconMailForward size={16} />}
+          onClick={sendTestReport}
+          loading={sendingReport}
+          variant="light"
+          size="md"
+        >
+          Send Test Report Email
+        </Button>
       </Paper>
 
       <Group>

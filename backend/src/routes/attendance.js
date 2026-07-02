@@ -183,8 +183,8 @@ router.get('/report', async (req, res) => {
     const lateGrace  = parseInt(settings.late_grace_mins);
     const earlyGrace = parseInt(settings.early_leave_grace_mins);
 
-    // Build employee filter
-    const empWhere = {};
+    // Build employee filter — only active employees appear in the report
+    const empWhere = { status: 'active' };
     if (department)  empWhere.department  = { contains: department,  mode: 'insensitive' };
     if (designation) empWhere.designation = { contains: designation, mode: 'insensitive' };
     if (search) {

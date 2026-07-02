@@ -5,6 +5,7 @@ export interface Employee {
   role: string | null;
   department: string | null;
   designation: string | null;
+  status: 'active' | 'inactive';
   createdAt: string;
 }
 
