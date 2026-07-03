@@ -21,6 +21,7 @@ model AttendanceLog {
   id           Int      @id @default(autoincrement())
   deviceUserId String
   punchTime    DateTime
+  // 0=Check-In 1=Check-Out 2=Break-Out 3=Break-In 4=OT-In 5=OT-Out 6=Leave (manual-only, no in/out semantics)
   punchType    Int      @default(0)
   source       String   @default("device")
   note         String?

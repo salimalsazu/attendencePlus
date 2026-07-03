@@ -45,6 +45,7 @@ const PUNCH_TYPE_OPTIONS = [
   { value: '3', label: 'Break In' },
   { value: '4', label: 'OT In' },
   { value: '5', label: 'OT Out' },
+  { value: '6', label: 'Leave' },
 ];
 
 export default function ManualAttendancePage() {
@@ -97,6 +98,8 @@ export default function ManualAttendancePage() {
       notifications.show({ message: 'Please enter a time', color: 'red' }); return;
     }
 
+    const isLeave = punchTypeVal === '6';
+
     setSubmitting(true);
     try {
       await api.createManualPunch({
@@ -104,11 +107,13 @@ export default function ManualAttendancePage() {
         date:         dayjs(date).format('YYYY-MM-DD'),
         time:         time.length === 5 ? `${time}:00` : time,
         punchType:    parseInt(punchTypeVal),
-        note:         note.trim() || undefined,
+        note:         note.trim() || (isLeave ? 'Leave' : undefined),
       });
       notifications.show({
-        title: 'Punch recorded',
-        message: `${selectedEmp.name} — ${PUNCH_TYPE_OPTIONS.find(o => o.value === punchTypeVal)?.label} at ${time}`,
+        title: isLeave ? 'Marked on leave' : 'Punch recorded',
+        message: isLeave
+          ? `${selectedEmp.name} — marked on leave for ${dayjs(date).format('DD MMM YYYY')}`
+          : `${selectedEmp.name} — ${PUNCH_TYPE_OPTIONS.find(o => o.value === punchTypeVal)?.label} at ${time}`,
         color: 'green',
         icon: <IconCheck size={16} />,
       });
@@ -302,8 +307,12 @@ export default function ManualAttendancePage() {
             />
 
             <Textarea
-              label="Note (optional)"
-              placeholder="Reason for manual entry, e.g. 'Device was offline — employee confirmed present'"
+              label={punchTypeVal === '6' ? 'Leave reason (optional)' : 'Note (optional)'}
+              placeholder={
+                punchTypeVal === '6'
+                  ? "e.g. 'Sick leave', 'Casual leave — approved'"
+                  : "Reason for manual entry, e.g. 'Device was offline — employee confirmed present'"
+              }
               value={note}
               onChange={e => setNote(e.currentTarget.value)}
               rows={3}
@@ -318,7 +327,7 @@ export default function ManualAttendancePage() {
               loading={submitting}
               style={{ background: '#2563eb' }}
             >
-              Record Attendance
+              {punchTypeVal === '6' ? 'Mark as Leave' : 'Record Attendance'}
             </Button>
           </Paper>
         </Grid.Col>
@@ -370,9 +379,9 @@ export default function ManualAttendancePage() {
                       </Table.Td>
                       <Table.Td>
                         <Group gap={5}>
-                          {isIn
+                          {r.punchType !== 6 && (isIn
                             ? <IconArrowRight size={12} color="#16a34a" />
-                            : <IconArrowBarToLeft size={12} color="#dc2626" />}
+                            : <IconArrowBarToLeft size={12} color="#dc2626" />)}
                           <Badge size="xs" variant="light" color={pt.color}>{pt.label}</Badge>
                         </Group>
                       </Table.Td>

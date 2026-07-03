@@ -50,7 +50,7 @@ export interface ReportRow {
 
 export interface MonthlyReportDay {
   date: string;
-  status: 'present' | 'late' | 'early_leave' | 'absent' | 'holiday' | 'future';
+  status: 'present' | 'late' | 'early_leave' | 'absent' | 'holiday' | 'future' | 'on_leave';
   firstPunch: string | null;
   lastPunch: string | null;
   durationMins: number | null;
@@ -63,6 +63,7 @@ export interface MonthlyReportRow {
   presentDays: number;
   lateDays: number;
   earlyLeaveDays: number;
+  leaveDays: number;
   absentDays: number;
   workingDays: number;
   totalWorkingMins: number;
@@ -76,6 +77,7 @@ export interface MonthlyReportSummary {
   avgPresentDays: number;
   totalLateDays: number;
   totalEarlyLeaveDays: number;
+  totalLeaveDays: number;
 }
 
 export interface MonthlyReport {

@@ -212,6 +212,7 @@ router.get('/report', async (req, res) => {
     // Build full rows with enriched status
     const rows = allEmployees.map(emp => {
       const userLogs  = byUser[emp.deviceUserId] ?? [];
+      const leaveLog  = userLogs.find(l => l.punchType === 6);
       const first     = userLogs[0]                                           ?? null;
       const last      = userLogs.length > 1 ? userLogs[userLogs.length - 1]  : null;
       const durationMins = first && last
@@ -222,34 +223,38 @@ router.get('/report', async (req, res) => {
       let delayMins    = 0;
       let earlyLeaveMins = 0;
 
-      if (first) {
-        const fp          = new Date(first.punchTime);
-        const officeStart = new Date(fp);
-        officeStart.setHours(startTime.hours, startTime.minutes, 0, 0);
-        const lateThresh  = new Date(officeStart.getTime() + lateGrace * 60_000);
-        delayMins = Math.max(0, Math.round((fp - officeStart) / 60_000));
-        rowStatus = fp > lateThresh ? 'late' : 'present';
-      }
+      if (leaveLog) {
+        rowStatus = 'on_leave';
+      } else {
+        if (first) {
+          const fp          = new Date(first.punchTime);
+          const officeStart = new Date(fp);
+          officeStart.setHours(startTime.hours, startTime.minutes, 0, 0);
+          const lateThresh  = new Date(officeStart.getTime() + lateGrace * 60_000);
+          delayMins = Math.max(0, Math.round((fp - officeStart) / 60_000));
+          rowStatus = fp > lateThresh ? 'late' : 'present';
+        }
 
-      // Early leave: last punch before (office_end - grace)
-      if (last) {
-        const lp         = new Date(last.punchTime);
-        const officeEnd  = new Date(lp);
-        officeEnd.setHours(endTime.hours, endTime.minutes, 0, 0);
-        const earlyThresh = new Date(officeEnd.getTime() - earlyGrace * 60_000);
-        if (lp < earlyThresh) {
-          earlyLeaveMins = Math.round((officeEnd - lp) / 60_000);
-          // Only promote to early_leave if not already late
-          if (rowStatus === 'present') rowStatus = 'early_leave';
+        // Early leave: last punch before (office_end - grace)
+        if (last) {
+          const lp         = new Date(last.punchTime);
+          const officeEnd  = new Date(lp);
+          officeEnd.setHours(endTime.hours, endTime.minutes, 0, 0);
+          const earlyThresh = new Date(officeEnd.getTime() - earlyGrace * 60_000);
+          if (lp < earlyThresh) {
+            earlyLeaveMins = Math.round((officeEnd - lp) / 60_000);
+            // Only promote to early_leave if not already late
+            if (rowStatus === 'present') rowStatus = 'early_leave';
+          }
         }
       }
 
       return {
         employee:      emp,
-        firstPunch:    first?.punchTime ?? null,
-        lastPunch:     last?.punchTime  ?? null,
+        firstPunch:    rowStatus === 'on_leave' ? null : (first?.punchTime ?? null),
+        lastPunch:     rowStatus === 'on_leave' ? null : (last?.punchTime  ?? null),
         totalPunches:  userLogs.length,
-        durationMins,
+        durationMins:  rowStatus === 'on_leave' ? null : durationMins,
         delayMins,
         earlyLeaveMins,
         status:        rowStatus,
@@ -272,7 +277,7 @@ router.get('/report', async (req, res) => {
       totalLate:       rows.filter(r => r.status === 'late').length,
       totalAbsent:     rows.filter(r => r.status === 'absent').length,
       totalEarlyLeave: rows.filter(r => r.status === 'early_leave').length,
-      totalOnLeave:    0,
+      totalOnLeave:    rows.filter(r => r.status === 'on_leave').length,
       avgWorkingMins: (() => {
         const worked = rows.filter(r => r.durationMins !== null);
         return worked.length > 0
@@ -361,7 +366,7 @@ router.get('/monthly-report', async (req, res) => {
 
     const rows = allEmployees.map(emp => {
       const userDates = byUserDate[emp.deviceUserId] ?? {};
-      let presentDays = 0, lateDays = 0, earlyLeaveDays = 0;
+      let presentDays = 0, lateDays = 0, earlyLeaveDays = 0, leaveDays = 0;
       let totalWorkingMins = 0, checkInSum = 0, checkInCount = 0;
 
       const dailyBreakdown = allDates.map(({ dateStr, isHoliday, isFuture }) => {
@@ -369,6 +374,10 @@ router.get('/monthly-report', async (req, res) => {
         if (isFuture)  return { date: dateStr, status: 'future',   firstPunch: null, lastPunch: null, durationMins: null, delayMins: 0, earlyLeaveMins: 0 };
 
         const dayLogs = userDates[dateStr] ?? [];
+        if (dayLogs.some(l => l.punchType === 6)) {
+          leaveDays++;
+          return { date: dateStr, status: 'on_leave', firstPunch: null, lastPunch: null, durationMins: null, delayMins: 0, earlyLeaveMins: 0 };
+        }
         if (dayLogs.length === 0) {
           return { date: dateStr, status: 'absent', firstPunch: null, lastPunch: null, durationMins: null, delayMins: 0, earlyLeaveMins: 0 };
         }
@@ -411,7 +420,8 @@ router.get('/monthly-report', async (req, res) => {
         presentDays,
         lateDays,
         earlyLeaveDays,
-        absentDays:      workingDays - presentDays,
+        leaveDays,
+        absentDays:      workingDays - presentDays - leaveDays,
         workingDays,
         totalWorkingMins,
         avgCheckInMins:  checkInCount > 0 ? Math.round(checkInSum / checkInCount) : null,
@@ -429,6 +439,7 @@ router.get('/monthly-report', async (req, res) => {
       avgPresentDays:      rows.length > 0 ? Math.round(rows.reduce((s, r) => s + r.presentDays, 0) / rows.length * 10) / 10 : 0,
       totalLateDays:       rows.reduce((s, r) => s + r.lateDays, 0),
       totalEarlyLeaveDays: rows.reduce((s, r) => s + r.earlyLeaveDays, 0),
+      totalLeaveDays:      rows.reduce((s, r) => s + r.leaveDays, 0),
     };
 
     res.json({

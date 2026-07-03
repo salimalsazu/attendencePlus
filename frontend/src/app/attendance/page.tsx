@@ -41,6 +41,7 @@ const STATUS_OPTIONS = [
   { value: 'late',        label: 'Late' },
   { value: 'early_leave', label: 'Early Leave' },
   { value: 'absent',      label: 'Absent' },
+  { value: 'on_leave',    label: 'On Leave' },
 ];
 
 interface Filters {
@@ -548,16 +549,17 @@ function PunchHistoryPanel({ row, onClose }: { row: ReportRow; onClose: () => vo
         <Timeline active={punches.length - 1} bulletSize={24} lineWidth={2}>
           {punches.map(p => {
             const pt = punchType(p.punchType);
+            const isLeave = p.punchType === 6;
             const isIn = p.punchType === 0 || p.punchType === 3 || p.punchType === 4;
             return (
               <Timeline.Item
                 key={p.id}
                 color={pt.color}
-                bullet={isIn ? <IconArrowRight size={12} /> : <IconArrowBarToLeft size={12} />}
+                bullet={isLeave ? undefined : (isIn ? <IconArrowRight size={12} /> : <IconArrowBarToLeft size={12} />)}
                 title={
                   <Group gap="xs">
                     <Text fw={700} fz="sm">{dayjs(p.punchTime).format('hh:mm A')}</Text>
-                    <Badge size="xs" color={isIn ? 'green' : 'red'} variant="light">
+                    <Badge size="xs" color={isLeave ? pt.color : (isIn ? 'green' : 'red')} variant="light">
                       {pt.label}
                     </Badge>
                   </Group>

@@ -103,7 +103,7 @@ export default function MonthlyReportPage() {
 
       autoTable(doc, {
         startY: 41,
-        head: [['#', 'User ID', 'Employee Name', 'Dept', 'Designation', 'Present', 'Absent', 'Late', 'Early Leave', 'Total Hrs', 'Avg Check-In']],
+        head: [['#', 'User ID', 'Employee Name', 'Dept', 'Designation', 'Present', 'Absent', 'Leave', 'Late', 'Early Leave', 'Total Hrs', 'Avg Check-In']],
         body: report.rows.map((r, i) => [
           i + 1,
           `EMP-${r.employee.deviceUserId.padStart(4, '0')}`,
@@ -112,6 +112,7 @@ export default function MonthlyReportPage() {
           r.employee.designation ?? '—',
           `${r.presentDays}/${r.workingDays}d`,
           `${r.absentDays}d`,
+          `${r.leaveDays}d`,
           `${r.lateDays}d`,
           `${r.earlyLeaveDays}d`,
           formatDuration(r.totalWorkingMins),
@@ -180,6 +181,7 @@ export default function MonthlyReportPage() {
             { label: 'Avg Present Days', value: `${s.avgPresentDays}d`, color: '#7c3aed', bg: '#f5f3ff' },
             { label: 'Total Late Days',  value: s.totalLateDays,        color: '#d97706', bg: '#fffbeb' },
             { label: 'Early Leave Days', value: s.totalEarlyLeaveDays,  color: '#ca8a04', bg: '#fefce8' },
+            { label: 'Leave Days',       value: s.totalLeaveDays,       color: '#7c3aed', bg: '#f5f3ff' },
           ].map(c => (
             <Paper key={c.label} withBorder radius="md" p="md" style={{ background: c.bg, borderColor: c.color + '33' }}>
               <Text fz="xs" c="dimmed" tt="uppercase" fw={600}>{c.label}</Text>
@@ -195,14 +197,14 @@ export default function MonthlyReportPage() {
           <Table.Thead style={{ background: '#1e3a5f' }}>
             <Table.Tr>
               {['#', 'User ID', 'Employee Name', 'Department', 'Designation',
-                'Present', 'Absent', 'Late', 'Early Leave', 'Total Hrs', 'Avg Check-In', ''].map(h => (
+                'Present', 'Absent', 'Leave', 'Late', 'Early Leave', 'Total Hrs', 'Avg Check-In', ''].map(h => (
                 <Table.Th key={h} style={{ color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</Table.Th>
               ))}
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
             {loading && Array.from({ length: 8 }).map((_, i) => (
-              <Table.Tr key={i}>{Array.from({ length: 12 }).map((__, j) => (
+              <Table.Tr key={i}>{Array.from({ length: 13 }).map((__, j) => (
                 <Table.Td key={j}><Skeleton h={14} w={j === 0 ? 20 : 70} /></Table.Td>
               ))}</Table.Tr>
             ))}
@@ -226,6 +228,7 @@ export default function MonthlyReportPage() {
                     </Group>
                   </Table.Td>
                   <Table.Td><Badge size="sm" variant="light" color="red">{row.absentDays}d</Badge></Table.Td>
+                  <Table.Td><Badge size="sm" variant="light" color="grape">{row.leaveDays}d</Badge></Table.Td>
                   <Table.Td><Badge size="sm" variant="light" color="orange">{row.lateDays}d</Badge></Table.Td>
                   <Table.Td><Badge size="sm" variant="light" color="yellow">{row.earlyLeaveDays}d</Badge></Table.Td>
                   <Table.Td fz="sm" fw={500}>{formatDuration(row.totalWorkingMins)}</Table.Td>
@@ -240,7 +243,7 @@ export default function MonthlyReportPage() {
 
                 {expandedId === row.employee.deviceUserId && (
                   <Table.Tr>
-                    <Table.Td colSpan={12} style={{ background: '#f8fafc', padding: 0 }}>
+                    <Table.Td colSpan={13} style={{ background: '#f8fafc', padding: 0 }}>
                       <MonthCalendar row={row} holidays={holidays} month={report!.month} />
                     </Table.Td>
                   </Table.Tr>
@@ -250,7 +253,7 @@ export default function MonthlyReportPage() {
 
             {!loading && report?.rows.length === 0 && (
               <Table.Tr>
-                <Table.Td colSpan={12} ta="center" py="xl" c="dimmed">No records found.</Table.Td>
+                <Table.Td colSpan={13} ta="center" py="xl" c="dimmed">No records found.</Table.Td>
               </Table.Tr>
             )}
           </Table.Tbody>
@@ -332,6 +335,7 @@ function MonthCalendar({ row, holidays, month }: { row: MonthlyReportRow; holida
     late:        { bg: '#ffedd5', text: '#c2410c', dot: '#ea580c', label: 'Late' },
     early_leave: { bg: '#fef9c3', text: '#92400e', dot: '#ca8a04', label: 'Early' },
     absent:      { bg: '#fee2e2', text: '#b91c1c', dot: '#dc2626', label: 'Absent' },
+    on_leave:    { bg: '#ede9fe', text: '#6d28d9', dot: '#7c3aed', label: 'Leave' },
     holiday:     { bg: '#f1f5f9', text: '#64748b', dot: '#94a3b8', label: 'Holiday' },
     future:      { bg: '#f8fafc', text: '#cbd5e1', dot: '#e2e8f0', label: '—' },
   };
@@ -342,6 +346,7 @@ function MonthCalendar({ row, holidays, month }: { row: MonthlyReportRow; holida
     { key: 'late',        label: 'Late',         color: '#ea580c' },
     { key: 'early_leave', label: 'Early Leave',  color: '#ca8a04' },
     { key: 'absent',      label: 'Absent',       color: '#dc2626' },
+    { key: 'on_leave',    label: 'On Leave',     color: '#7c3aed' },
     { key: 'holiday',     label: 'Holiday',      color: '#94a3b8' },
   ];
 
@@ -397,7 +402,7 @@ function MonthCalendar({ row, holidays, month }: { row: MonthlyReportRow; holida
             </Text>
             <Text fz="xs" c="dimmed">
               {row.employee.department ?? ''}{row.employee.designation ? ` · ${row.employee.designation}` : ''} &nbsp;|&nbsp;
-              Present: {row.presentDays}d &nbsp; Absent: {row.absentDays}d &nbsp; Late: {row.lateDays}d &nbsp; Early Leave: {row.earlyLeaveDays}d
+              Present: {row.presentDays}d &nbsp; Absent: {row.absentDays}d &nbsp; Late: {row.lateDays}d &nbsp; Early Leave: {row.earlyLeaveDays}d &nbsp; Leave: {row.leaveDays}d
             </Text>
           </div>
           <Group gap={10}>

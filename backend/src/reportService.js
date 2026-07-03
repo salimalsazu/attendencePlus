@@ -40,6 +40,7 @@ async function getDailyReport(targetDate = new Date()) {
 
   const rows = employees.map(emp => {
     const userLogs = byUser[emp.deviceUserId] ?? [];
+    const leaveLog = userLogs.find(l => l.punchType === 6);
     const first    = userLogs[0]                                  ?? null;
     const last     = userLogs.length > 1 ? userLogs[userLogs.length - 1] : null;
     const durationMins = first && last
@@ -50,32 +51,36 @@ async function getDailyReport(targetDate = new Date()) {
     let delayMins       = 0;
     let earlyLeaveMins  = 0;
 
-    if (first) {
-      const fp          = new Date(first.punchTime);
-      const officeStart = new Date(fp);
-      officeStart.setHours(startTime.hours, startTime.minutes, 0, 0);
-      const lateThresh  = new Date(officeStart.getTime() + lateGrace * 60_000);
-      delayMins = Math.max(0, Math.round((fp - officeStart) / 60_000));
-      rowStatus = fp > lateThresh ? 'late' : 'present';
-    }
+    if (leaveLog) {
+      rowStatus = 'on_leave';
+    } else {
+      if (first) {
+        const fp          = new Date(first.punchTime);
+        const officeStart = new Date(fp);
+        officeStart.setHours(startTime.hours, startTime.minutes, 0, 0);
+        const lateThresh  = new Date(officeStart.getTime() + lateGrace * 60_000);
+        delayMins = Math.max(0, Math.round((fp - officeStart) / 60_000));
+        rowStatus = fp > lateThresh ? 'late' : 'present';
+      }
 
-    if (last) {
-      const lp         = new Date(last.punchTime);
-      const officeEnd  = new Date(lp);
-      officeEnd.setHours(endTime.hours, endTime.minutes, 0, 0);
-      const earlyThresh = new Date(officeEnd.getTime() - earlyGrace * 60_000);
-      if (lp < earlyThresh) {
-        earlyLeaveMins = Math.round((officeEnd - lp) / 60_000);
-        if (rowStatus === 'present') rowStatus = 'early_leave';
+      if (last) {
+        const lp         = new Date(last.punchTime);
+        const officeEnd  = new Date(lp);
+        officeEnd.setHours(endTime.hours, endTime.minutes, 0, 0);
+        const earlyThresh = new Date(officeEnd.getTime() - earlyGrace * 60_000);
+        if (lp < earlyThresh) {
+          earlyLeaveMins = Math.round((officeEnd - lp) / 60_000);
+          if (rowStatus === 'present') rowStatus = 'early_leave';
+        }
       }
     }
 
     return {
       employee: emp,
-      firstPunch: first?.punchTime ?? null,
-      lastPunch:  last?.punchTime  ?? null,
+      firstPunch: rowStatus === 'on_leave' ? null : (first?.punchTime ?? null),
+      lastPunch:  rowStatus === 'on_leave' ? null : (last?.punchTime  ?? null),
       totalPunches: userLogs.length,
-      durationMins,
+      durationMins: rowStatus === 'on_leave' ? null : durationMins,
       delayMins,
       earlyLeaveMins,
       status: rowStatus,
@@ -88,6 +93,7 @@ async function getDailyReport(targetDate = new Date()) {
     totalLate:       rows.filter(r => r.status === 'late').length,
     totalAbsent:     rows.filter(r => r.status === 'absent').length,
     totalEarlyLeave: rows.filter(r => r.status === 'early_leave').length,
+    totalOnLeave:    rows.filter(r => r.status === 'on_leave').length,
   };
 
   return { date: from, rows, summary };
