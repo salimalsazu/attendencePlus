@@ -28,6 +28,16 @@ function fmtDate(date) {
   });
 }
 
+// Absent/leave rows have no check-in time to show, so this is where we
+// surface *why* — leave reason (from the note) or plain "Absent". Present/
+// late/early-leave rows already show their check-in time, so this stays
+// blank for them rather than repeating the status.
+function statusNote(r) {
+  if (r.status === 'on_leave') return r.note ? `Leave — ${r.note}` : 'Leave';
+  if (r.status === 'absent')   return r.note || 'Absent';
+  return '';
+}
+
 function buildDailyReportHtml({ date, rows }) {
   const dateStr = fmtDate(date);
 
@@ -37,6 +47,7 @@ function buildDailyReportHtml({ date, rows }) {
                 <td class="dept-col dept-cell">${escapeHtml(r.employee.department || '—')}</td>
                 <td>${fmtTime(r.firstPunch)}</td>
                 <td>${r.delayMins > 0 ? r.delayMins + ' min' : '—'}</td>
+                <td>${escapeHtml(statusNote(r)) || '—'}</td>
               </tr>`).join('');
 
   return `<!DOCTYPE html>
@@ -97,6 +108,7 @@ function buildDailyReportHtml({ date, rows }) {
                       <th class="dept-col">Department</th>
                       <th>Check-In</th>
                       <th>Delay</th>
+                      <th>Note</th>
                     </tr>
                   </thead>
                   <tbody>${tableRows}

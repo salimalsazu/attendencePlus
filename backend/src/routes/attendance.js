@@ -258,6 +258,7 @@ router.get('/report', async (req, res) => {
         delayMins,
         earlyLeaveMins,
         status:        rowStatus,
+        note:          leaveLog?.note ?? (userLogs.find(l => l.note)?.note ?? null),
         punches:       userLogs,
       };
     });

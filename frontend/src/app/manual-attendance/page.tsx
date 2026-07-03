@@ -45,6 +45,7 @@ const PUNCH_TYPE_OPTIONS = [
   { value: '3', label: 'Break In' },
   { value: '4', label: 'OT In' },
   { value: '5', label: 'OT Out' },
+  { value: '7', label: 'SMS' },
 ];
 
 const LEAVE_OPTIONS = [
@@ -401,7 +402,7 @@ export default function ManualAttendancePage() {
                       </Table.Td>
                       <Table.Td>
                         <Group gap={5}>
-                          {r.punchType !== 6 && (isIn
+                          {r.punchType !== 6 && r.punchType !== 7 && (isIn
                             ? <IconArrowRight size={12} color="#16a34a" />
                             : <IconArrowBarToLeft size={12} color="#dc2626" />)}
                           <Badge size="xs" variant="light" color={pt.color}>{pt.label}</Badge>

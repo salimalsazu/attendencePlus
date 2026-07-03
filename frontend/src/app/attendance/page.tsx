@@ -192,7 +192,7 @@ export default function AttendanceReportPage() {
       autoTable(doc, {
         startY: 41,
         head: [['#', 'User ID', 'Employee Name', 'Designation', 'Department',
-                'Check-In', 'Check-Out', 'Working Hrs', 'Status', 'Delay']],
+                'Check-In', 'Check-Out', 'Working Hrs', 'Status', 'Note', 'Delay']],
         body: rowsToExport.map((r, i) => [
           i + 1,
           `EMP-${r.employee.deviceUserId.padStart(4, '0')}`,
@@ -203,6 +203,7 @@ export default function AttendanceReportPage() {
           r.lastPunch  ? dayjs(r.lastPunch).format('hh:mm A')  : '—',
           r.durationMins !== null ? formatDuration(r.durationMins) : '—',
           statusLabel(r.status),
+          r.note ?? '—',
           r.delayMins > 0 ? `+${r.delayMins} min` : '—',
         ]),
         styles:             { fontSize: 8, cellPadding: 2 },
@@ -213,7 +214,8 @@ export default function AttendanceReportPage() {
           1: { cellWidth: 22 },
           7: { cellWidth: 22 },
           8: { cellWidth: 22 },
-          9: { cellWidth: 22 },
+          9: { cellWidth: 30 },
+          10: { cellWidth: 22 },
         },
       });
 
@@ -324,7 +326,7 @@ export default function AttendanceReportPage() {
                 />
               </Table.Th>
               {['#', 'User ID', 'Employee Name', 'Designation', 'Department',
-                'First Check-In', 'Last Check-Out', 'Working Hrs', 'Status', 'Delay', 'Actions']
+                'First Check-In', 'Last Check-Out', 'Working Hrs', 'Status', 'Note', 'Delay', 'Actions']
                 .map(h => (
                   <Table.Th key={h} style={{ color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}>
                     {h}
@@ -336,7 +338,7 @@ export default function AttendanceReportPage() {
           <Table.Tbody>
             {loading && Array.from({ length: 8 }).map((_, i) => (
               <Table.Tr key={i}>
-                {Array.from({ length: 12 }).map((__, j) => (
+                {Array.from({ length: 13 }).map((__, j) => (
                   <Table.Td key={j}><Skeleton h={14} w={j === 0 ? 20 : 80} /></Table.Td>
                 ))}
               </Table.Tr>
@@ -393,6 +395,11 @@ export default function AttendanceReportPage() {
                       <StatusBadge status={row.status} />
                     </Table.Td>
                     <Table.Td>
+                      {row.note
+                        ? <Text fz="xs" c="dimmed" style={{ maxWidth: 160 }} lineClamp={1}>{row.note}</Text>
+                        : <Text fz="sm" c="dimmed">—</Text>}
+                    </Table.Td>
+                    <Table.Td>
                       {row.delayMins > 0
                         ? <Text fz="sm" fw={600} c="orange">+{row.delayMins} mins</Text>
                         : <Text fz="sm" c="dimmed">—</Text>}
@@ -415,7 +422,7 @@ export default function AttendanceReportPage() {
 
                   {expandedId === row.employee.deviceUserId && (
                     <Table.Tr>
-                      <Table.Td colSpan={12} style={{ background: '#f8fafc', padding: 0 }}>
+                      <Table.Td colSpan={13} style={{ background: '#f8fafc', padding: 0 }}>
                         <PunchHistoryPanel row={row} onClose={() => setExpandedId(null)} />
                       </Table.Td>
                     </Table.Tr>
@@ -426,7 +433,7 @@ export default function AttendanceReportPage() {
 
             {!loading && report?.rows.length === 0 && (
               <Table.Tr>
-                <Table.Td colSpan={12} ta="center" py="xl" c="dimmed">
+                <Table.Td colSpan={13} ta="center" py="xl" c="dimmed">
                   No records found for the selected filters.
                 </Table.Td>
               </Table.Tr>
@@ -549,17 +556,17 @@ function PunchHistoryPanel({ row, onClose }: { row: ReportRow; onClose: () => vo
         <Timeline active={punches.length - 1} bulletSize={24} lineWidth={2}>
           {punches.map(p => {
             const pt = punchType(p.punchType);
-            const isLeave = p.punchType === 6;
+            const isNeutral = p.punchType === 6 || p.punchType === 7;
             const isIn = p.punchType === 0 || p.punchType === 3 || p.punchType === 4;
             return (
               <Timeline.Item
                 key={p.id}
                 color={pt.color}
-                bullet={isLeave ? undefined : (isIn ? <IconArrowRight size={12} /> : <IconArrowBarToLeft size={12} />)}
+                bullet={isNeutral ? undefined : (isIn ? <IconArrowRight size={12} /> : <IconArrowBarToLeft size={12} />)}
                 title={
                   <Group gap="xs">
                     <Text fw={700} fz="sm">{dayjs(p.punchTime).format('hh:mm A')}</Text>
-                    <Badge size="xs" color={isLeave ? pt.color : (isIn ? 'green' : 'red')} variant="light">
+                    <Badge size="xs" color={isNeutral ? pt.color : (isIn ? 'green' : 'red')} variant="light">
                       {pt.label}
                     </Badge>
                   </Group>

@@ -45,6 +45,7 @@ export interface ReportRow {
   delayMins: number;
   earlyLeaveMins: number;
   status: 'present' | 'late' | 'absent' | 'early_leave' | 'on_leave';
+  note: string | null;
   punches: AttendanceRecord[];
 }
 

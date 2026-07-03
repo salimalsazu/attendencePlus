@@ -6,6 +6,7 @@ export const PUNCH_TYPES: Record<number, { label: string; color: string }> = {
   4: { label: 'OT In',     color: 'teal'   },
   5: { label: 'OT Out',    color: 'violet' },
   6: { label: 'Leave',     color: 'grape'  },
+  7: { label: 'SMS',       color: 'indigo' },
 };
 
 const AVATAR_COLORS = [

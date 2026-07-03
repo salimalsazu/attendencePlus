@@ -81,6 +81,7 @@ async function getDailyReport(targetDate = new Date()) {
       lastPunch:  rowStatus === 'on_leave' ? null : (last?.punchTime  ?? null),
       totalPunches: userLogs.length,
       durationMins: rowStatus === 'on_leave' ? null : durationMins,
+      note: leaveLog?.note ?? (userLogs.find(l => l.note)?.note ?? null),
       delayMins,
       earlyLeaveMins,
       status: rowStatus,
