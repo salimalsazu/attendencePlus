@@ -45,8 +45,14 @@ const PUNCH_TYPE_OPTIONS = [
   { value: '3', label: 'Break In' },
   { value: '4', label: 'OT In' },
   { value: '5', label: 'OT Out' },
-  { value: '6', label: 'Leave' },
 ];
+
+const LEAVE_OPTIONS = [
+  { value: 'no',  label: 'No' },
+  { value: 'yes', label: 'Yes' },
+];
+
+const LEAVE_PUNCH_TYPE = 6;
 
 export default function ManualAttendancePage() {
   const [employees,    setEmployees]    = useState<Employee[]>([]);
@@ -59,7 +65,9 @@ export default function ManualAttendancePage() {
   const [date,         setDate]         = useState<Date | null>(new Date());
   const [time,         setTime]         = useState(dayjs().format('HH:mm'));
   const [punchTypeVal, setPunchTypeVal] = useState('0');
+  const [leaveVal,     setLeaveVal]     = useState('no');
   const [note,         setNote]         = useState('');
+  const isLeave = leaveVal === 'yes';
 
   const loadEmployees = useCallback(async () => {
     setEmpLoading(true);
@@ -94,20 +102,21 @@ export default function ManualAttendancePage() {
     if (!date) {
       notifications.show({ message: 'Please select a date', color: 'red' }); return;
     }
-    if (!time) {
+    if (!isLeave && !time) {
       notifications.show({ message: 'Please enter a time', color: 'red' }); return;
     }
-
-    const isLeave = punchTypeVal === '6';
+    if (isLeave && !note.trim()) {
+      notifications.show({ message: 'Please write a reason for the leave in the note', color: 'red' }); return;
+    }
 
     setSubmitting(true);
     try {
       await api.createManualPunch({
         deviceUserId: selectedEmp.deviceUserId,
         date:         dayjs(date).format('YYYY-MM-DD'),
-        time:         time.length === 5 ? `${time}:00` : time,
-        punchType:    parseInt(punchTypeVal),
-        note:         note.trim() || (isLeave ? 'Leave' : undefined),
+        time:         isLeave ? '00:00:00' : (time.length === 5 ? `${time}:00` : time),
+        punchType:    isLeave ? LEAVE_PUNCH_TYPE : parseInt(punchTypeVal),
+        note:         note.trim() || undefined,
       });
       notifications.show({
         title: isLeave ? 'Marked on leave' : 'Punch recorded',
@@ -123,6 +132,7 @@ export default function ManualAttendancePage() {
       setDate(new Date());
       setTime(dayjs().format('HH:mm'));
       setPunchTypeVal('0');
+      setLeaveVal('no');
       setNote('');
       await loadLogs();
     } catch (err) {
@@ -291,25 +301,37 @@ export default function ManualAttendancePage() {
               </Grid.Col>
               <Grid.Col span={5}>
                 <TimeInput
-                  label={<Text fz="sm" fw={500} c="#374151">Time <span style={{ color: '#dc2626' }}>*</span></Text>}
+                  label={<Text fz="sm" fw={500} c="#374151">Time {!isLeave && <span style={{ color: '#dc2626' }}>*</span>}</Text>}
                   value={time}
                   onChange={e => setTime(e.currentTarget.value)}
+                  disabled={isLeave}
                 />
               </Grid.Col>
             </Grid>
 
             <Select
-              label={<Text fz="sm" fw={500} c="#374151">Punch Type <span style={{ color: '#dc2626' }}>*</span></Text>}
-              data={PUNCH_TYPE_OPTIONS}
-              value={punchTypeVal}
-              onChange={v => setPunchTypeVal(v ?? '0')}
+              label={<Text fz="sm" fw={500} c="#374151">Leave <span style={{ color: '#dc2626' }}>*</span></Text>}
+              description="Mark this employee as on leave for the selected date"
+              data={LEAVE_OPTIONS}
+              value={leaveVal}
+              onChange={v => setLeaveVal(v ?? 'no')}
               mb="sm"
             />
 
+            {!isLeave && (
+              <Select
+                label={<Text fz="sm" fw={500} c="#374151">Punch Type <span style={{ color: '#dc2626' }}>*</span></Text>}
+                data={PUNCH_TYPE_OPTIONS}
+                value={punchTypeVal}
+                onChange={v => setPunchTypeVal(v ?? '0')}
+                mb="sm"
+              />
+            )}
+
             <Textarea
-              label={punchTypeVal === '6' ? 'Leave reason (optional)' : 'Note (optional)'}
+              label={<>{isLeave ? 'Leave reason' : 'Note (optional)'} {isLeave && <span style={{ color: '#dc2626' }}>*</span>}</>}
               placeholder={
-                punchTypeVal === '6'
+                isLeave
                   ? "e.g. 'Sick leave', 'Casual leave — approved'"
                   : "Reason for manual entry, e.g. 'Device was offline — employee confirmed present'"
               }
@@ -327,7 +349,7 @@ export default function ManualAttendancePage() {
               loading={submitting}
               style={{ background: '#2563eb' }}
             >
-              {punchTypeVal === '6' ? 'Mark as Leave' : 'Record Attendance'}
+              {isLeave ? 'Mark as Leave' : 'Record Attendance'}
             </Button>
           </Paper>
         </Grid.Col>
