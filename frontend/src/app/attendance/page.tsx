@@ -17,6 +17,7 @@ import {
   TextInput,
   Timeline,
   Title,
+  Tooltip,
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { notifications } from '@mantine/notifications';
@@ -396,7 +397,13 @@ export default function AttendanceReportPage() {
                     </Table.Td>
                     <Table.Td>
                       {row.note
-                        ? <Text fz="xs" c="dimmed" style={{ maxWidth: 160 }} lineClamp={1}>{row.note}</Text>
+                        ? (
+                          <Tooltip label={row.note} multiline w={260} withArrow>
+                            <Text fz="xs" c="dimmed" style={{ maxWidth: 160, cursor: 'help' }} lineClamp={1}>
+                              {row.note}
+                            </Text>
+                          </Tooltip>
+                        )
                         : <Text fz="sm" c="dimmed">—</Text>}
                     </Table.Td>
                     <Table.Td>

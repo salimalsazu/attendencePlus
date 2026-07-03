@@ -14,9 +14,10 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
-import { TimeInput } from '@mantine/dates';
+import { DatePickerInput, TimeInput } from '@mantine/dates';
 import { notifications } from '@mantine/notifications';
 import { IconCalendarOff, IconCheck, IconClock, IconDeviceFloppy, IconMailForward, IconSend, IconSettings } from '@tabler/icons-react';
+import dayjs from 'dayjs';
 import { api } from '@/lib/api';
 import type { AppSettings } from '@/lib/types';
 
@@ -61,6 +62,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving,  setSaving]  = useState(false);
   const [manualEmail, setManualEmail] = useState('');
+  const [manualDate,  setManualDate]  = useState<Date | null>(new Date());
   const [sendingManual, setSendingManual] = useState(false);
 
   useEffect(() => {
@@ -88,9 +90,10 @@ export default function SettingsPage() {
     if (!to) return;
     setSendingManual(true);
     try {
-      const result = await api.sendTestReport({ to });
+      const date   = dayjs(manualDate ?? new Date()).format('YYYY-MM-DD');
+      const result = await api.sendTestReport({ to, date });
       notifications.show({
-        message: `Report sent to ${result.recipient}`,
+        message: `${dayjs(date).format('DD MMM YYYY')} report sent to ${result.recipient}`,
         color: 'green',
         icon: <IconCheck size={16} />,
       });
@@ -277,9 +280,20 @@ export default function SettingsPage() {
           </div>
         </Stack>
 
-        <Divider my="lg" label="Test & Manual Send" labelPosition="left" />
+        <Divider my="lg" label="Manual Send" labelPosition="left" />
 
         <Group gap="xs" align="flex-end">
+          <div>
+            <Text fz="xs" fw={600} c="#374151" mb={6}>Report date</Text>
+            <DatePickerInput
+              value={manualDate}
+              onChange={setManualDate}
+              maxDate={new Date()}
+              clearable={false}
+              size="md"
+              w={160}
+            />
+          </div>
           <div>
             <Text fz="xs" fw={600} c="#374151" mb={6}>Send to a specific email</Text>
             <TextInput
@@ -301,6 +315,7 @@ export default function SettingsPage() {
             Send
           </Button>
         </Group>
+        <Text fz="xs" c="dimmed" mt={6}>Send that day&apos;s attendance report — including past dates — to any email.</Text>
       </Paper>
 
       <Group>

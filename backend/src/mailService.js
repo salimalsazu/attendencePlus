@@ -65,7 +65,8 @@ function buildDailyReportHtml({ date, rows }) {
   .email-container { max-width:640px; width:100%; margin:0 auto; background:#ffffff; border-radius:12px; overflow:hidden; border:1px solid #e5e7eb; }
   .header { background:#0f1629; padding:24px 28px; }
   .brand { font-size:12px; color:#93c5fd; font-weight:600; letter-spacing:.05em; text-transform:uppercase; }
-  .title { font-size:20px; color:#ffffff; font-weight:700; margin-top:4px; }
+  .company { font-size:12px; color:#e5e7eb; margin-top:2px; }
+  .title { font-size:20px; color:#ffffff; font-weight:700; margin-top:8px; }
   .subtitle { font-size:13px; color:#cbd5e1; margin-top:2px; }
   .body-pad { padding:20px 24px 24px; }
   .report { width:100%; }
@@ -95,6 +96,7 @@ function buildDailyReportHtml({ date, rows }) {
             <tr>
               <td class="header">
                 <div class="brand">AttendTrack Pro</div>
+                <div class="company">24/7 Sourcing Pvt Ltd</div>
                 <div class="title">Daily Attendance Report</div>
                 <div class="subtitle">${dateStr}</div>
               </td>
