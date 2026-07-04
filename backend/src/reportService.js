@@ -23,13 +23,15 @@ async function getDailyReport(targetDate = new Date()) {
   const earlyGrace = parseInt(settings.early_leave_grace_mins);
 
   const [allEmployees, logs] = await Promise.all([
-    prisma.employee.findMany({ orderBy: { name: 'asc' } }),
+    prisma.employee.findMany({ where: { status: 'active' }, orderBy: { name: 'asc' } }),
     prisma.attendanceLog.findMany({
       where:   { punchTime: { gte: from, lte: to } },
       orderBy: { punchTime: 'asc' },
     }),
   ]);
 
+  // Active-by-default device stubs (see PLACEHOLDER_NAME above) still need to
+  // be screened out, so keep this filter on top of the active-status query.
   const employees = allEmployees.filter(hasRealName);
 
   const byUser = {};

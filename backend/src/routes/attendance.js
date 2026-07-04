@@ -529,20 +529,27 @@ router.post('/manual', async (req, res) => {
   }
 });
 
-// GET /api/attendance/manual-entries?page=1&limit=20
+// GET /api/attendance/manual-entries?page=1&limit=20&date=2026-07-03
 router.get('/manual-entries', async (req, res) => {
   try {
-    const { page = '1', limit = '20' } = req.query;
+    const { page = '1', limit = '20', date } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const where = { source: 'manual' };
+    if (date) {
+      const from = new Date(date); from.setHours(0, 0, 0, 0);
+      const to   = new Date(date); to.setHours(23, 59, 59, 999);
+      where.punchTime = { gte: from, lte: to };
+    }
 
     const [records, total] = await Promise.all([
       prisma.attendanceLog.findMany({
-        where:   { source: 'manual' },
+        where,
         orderBy: { punchTime: 'desc' },
         skip,
         take: parseInt(limit),
       }),
-      prisma.attendanceLog.count({ where: { source: 'manual' } }),
+      prisma.attendanceLog.count({ where }),
     ]);
 
     const ids = [...new Set(records.map(r => r.deviceUserId))];

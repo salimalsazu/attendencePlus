@@ -68,6 +68,7 @@ export default function ManualAttendancePage() {
   const [punchTypeVal, setPunchTypeVal] = useState('0');
   const [leaveVal,     setLeaveVal]     = useState('no');
   const [note,         setNote]         = useState('');
+  const [entriesDate,  setEntriesDate]  = useState<Date | null>(new Date());
   const isLeave = leaveVal === 'yes';
 
   const loadEmployees = useCallback(async () => {
@@ -76,16 +77,19 @@ export default function ManualAttendancePage() {
     finally { setEmpLoading(false); }
   }, []);
 
-  const loadLogs = useCallback(async () => {
+  const loadLogs = useCallback(async (forDate: Date | null) => {
     setLogsLoading(true);
     try {
-      const res = await api.manualEntries({ limit: '20' });
+      const params: Record<string, string> = { limit: '20' };
+      if (forDate) params.date = dayjs(forDate).format('YYYY-MM-DD');
+      const res = await api.manualEntries(params);
       setManualLogs(res.records);
     } catch { /* */ }
     finally { setLogsLoading(false); }
   }, []);
 
-  useEffect(() => { loadEmployees(); loadLogs(); }, [loadEmployees, loadLogs]);
+  useEffect(() => { loadEmployees(); }, [loadEmployees]);
+  useEffect(() => { loadLogs(entriesDate); }, [entriesDate, loadLogs]);
 
   // Filter employees for autocomplete
   const filteredEmps = employees.filter(e => {
@@ -135,7 +139,7 @@ export default function ManualAttendancePage() {
       setPunchTypeVal('0');
       setLeaveVal('no');
       setNote('');
-      await loadLogs();
+      await loadLogs(entriesDate);
     } catch (err) {
       notifications.show({ message: String(err), color: 'red' });
     } finally {
@@ -360,7 +364,22 @@ export default function ManualAttendancePage() {
           <Paper withBorder radius="md" p={0} style={{ overflow: 'hidden' }}>
             <Group px="lg" py="md" style={{ borderBottom: '1px solid #f1f5f9' }}>
               <Text fw={700} fz="sm" c="#111827">Recent Manual Entries</Text>
-              <Badge variant="light" color="orange" size="sm" ml="auto">Manual only</Badge>
+              <Badge variant="light" color="orange" size="sm">Manual only</Badge>
+              <Group gap={6} ml="auto">
+                <DatePickerInput
+                  value={entriesDate}
+                  onChange={setEntriesDate}
+                  maxDate={new Date()}
+                  clearable={false}
+                  size="xs"
+                  w={140}
+                />
+                {!dayjs(entriesDate).isSame(dayjs(), 'day') && (
+                  <Button size="xs" variant="subtle" onClick={() => setEntriesDate(new Date())}>
+                    Today
+                  </Button>
+                )}
+              </Group>
             </Group>
 
             <Table highlightOnHover verticalSpacing="sm" style={{ fontSize: 14 }}>
@@ -432,7 +451,7 @@ export default function ManualAttendancePage() {
                 {!logsLoading && manualLogs.length === 0 && (
                   <Table.Tr>
                     <Table.Td colSpan={5} ta="center" py="xl" c="dimmed">
-                      No manual entries yet.
+                      No manual entries for {dayjs(entriesDate).format('DD MMM YYYY')}.
                     </Table.Td>
                   </Table.Tr>
                 )}
