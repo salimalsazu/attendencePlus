@@ -500,6 +500,24 @@ function dateToZkTime(date) {
   return buf;
 }
 
+// Reads the 4-byte ZK time from a CMD_GET_TIME response buffer.
+// After removeTcpHeader strips the 8-byte TCP prefix, the buffer still
+// contains an 8-byte inner ZK command header [cmd, checksum, session, reply]
+// before the actual payload. Time data is therefore at offset 8, not 0.
+// We scan a few candidate offsets and pick the one whose decoded year looks
+// plausible (1990-2100), falling back to raw offset 0 if nothing fits.
+function readZkTimeFromBuf(buf) {
+  if (!buf || buf.length < 4) return null;
+  const candidates = [8, 12, 4, 0];
+  for (const off of candidates) {
+    if (buf.length < off + 4) continue;
+    const t = buf.readUInt32LE(off);
+    const d = zkTimeToDate(t);
+    if (d.getFullYear() >= 1990 && d.getFullYear() <= 2100) return d;
+  }
+  return null;
+}
+
 // Pushes the server's current time (Asia/Dhaka) to the ZKTeco device.
 // Fixes a device whose RTC battery has died and clock reverted to 1/1/2000.
 async function syncDeviceTime() {
@@ -511,25 +529,27 @@ async function syncDeviceTime() {
     let deviceTimeBefore = null;
     try {
       const rawBefore = await zk.executeCmd(COMMANDS.CMD_GET_TIME, '');
-      if (rawBefore && rawBefore.length >= 4) {
-        deviceTimeBefore = zkTimeToDate(rawBefore.readUInt32LE(0)).toLocaleString();
-      }
-    } catch (_) {}
+      ts(`CMD_GET_TIME raw (hex): ${rawBefore ? rawBefore.toString('hex') : 'null'}`);
+      const d = readZkTimeFromBuf(rawBefore);
+      if (d) deviceTimeBefore = d.toLocaleString();
+    } catch (e) { ts(`GET_TIME before error: ${e.message}`); }
 
     // Set device time to the server's current local time
     const now = new Date();
-    await zk.executeCmd(COMMANDS.CMD_SET_TIME, dateToZkTime(now));
+    const timeBuf = dateToZkTime(now);
+    ts(`CMD_SET_TIME sending (hex): ${timeBuf.toString('hex')} = ${now.toLocaleString()}`);
+    await zk.executeCmd(COMMANDS.CMD_SET_TIME, timeBuf);
 
     // Read back to confirm
     let deviceTimeAfter = null;
     try {
       const rawAfter = await zk.executeCmd(COMMANDS.CMD_GET_TIME, '');
-      if (rawAfter && rawAfter.length >= 4) {
-        deviceTimeAfter = zkTimeToDate(rawAfter.readUInt32LE(0)).toLocaleString();
-      }
-    } catch (_) {}
+      ts(`CMD_GET_TIME after (hex): ${rawAfter ? rawAfter.toString('hex') : 'null'}`);
+      const d = readZkTimeFromBuf(rawAfter);
+      if (d) deviceTimeAfter = d.toLocaleString();
+    } catch (e) { ts(`GET_TIME after error: ${e.message}`); }
 
-    ts(`Device clock synced. Before: ${deviceTimeBefore}, After: ${deviceTimeAfter}`);
+    ts(`Device clock sync done. Before: ${deviceTimeBefore}, After: ${deviceTimeAfter}`);
     return { ok: true, deviceTimeBefore, deviceTimeAfter, serverTime: now.toLocaleString() };
   } finally {
     try { await zk.disconnect(); } catch (_) {}
