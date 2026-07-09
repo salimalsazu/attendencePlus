@@ -483,6 +483,59 @@ async function startRealTimeListener() {
   }
 }
 
+// Encodes a JS Date into the ZKTeco 4-byte timestamp format (little-endian UInt32).
+// Mirror of zkTimeToDate above — must use the same formula in reverse.
+// Container TZ is Asia/Dhaka, so getHours() etc. already reflect local time.
+function dateToZkTime(date) {
+  const year   = date.getFullYear() - 2000;
+  const month  = date.getMonth();       // 0-indexed
+  const day    = date.getDate();        // 1-indexed
+  const hour   = date.getHours();
+  const minute = date.getMinutes();
+  const second = date.getSeconds();
+  const t = second + minute * 60 + hour * 3600 +
+            ((day - 1) + month * 31 + year * 12 * 31) * 86400;
+  const buf = Buffer.alloc(4);
+  buf.writeUInt32LE(t, 0);
+  return buf;
+}
+
+// Pushes the server's current time (Asia/Dhaka) to the ZKTeco device.
+// Fixes a device whose RTC battery has died and clock reverted to 1/1/2000.
+async function syncDeviceTime() {
+  const zk = new ZKLib(ZK_IP, ZK_PORT, ZK_TIMEOUT, 4000);
+  try {
+    await zk.createSocket();
+
+    // Read device time before changing it (for the response)
+    let deviceTimeBefore = null;
+    try {
+      const rawBefore = await zk.executeCmd(COMMANDS.CMD_GET_TIME, '');
+      if (rawBefore && rawBefore.length >= 4) {
+        deviceTimeBefore = zkTimeToDate(rawBefore.readUInt32LE(0)).toLocaleString();
+      }
+    } catch (_) {}
+
+    // Set device time to the server's current local time
+    const now = new Date();
+    await zk.executeCmd(COMMANDS.CMD_SET_TIME, dateToZkTime(now));
+
+    // Read back to confirm
+    let deviceTimeAfter = null;
+    try {
+      const rawAfter = await zk.executeCmd(COMMANDS.CMD_GET_TIME, '');
+      if (rawAfter && rawAfter.length >= 4) {
+        deviceTimeAfter = zkTimeToDate(rawAfter.readUInt32LE(0)).toLocaleString();
+      }
+    } catch (_) {}
+
+    ts(`Device clock synced. Before: ${deviceTimeBefore}, After: ${deviceTimeAfter}`);
+    return { ok: true, deviceTimeBefore, deviceTimeAfter, serverTime: now.toLocaleString() };
+  } finally {
+    try { await zk.disconnect(); } catch (_) {}
+  }
+}
+
 // Quick connectivity check — used by /api/devices/diagnostics
 // Does a TCP connect to the ZK device, then a short ZK handshake to confirm
 // the device is actually a ZKTeco device (not just an open port).
@@ -532,4 +585,4 @@ async function diagnoseZk() {
   return result;
 }
 
-module.exports = { syncAttendance, startRealTimeListener, diagnoseZk };
+module.exports = { syncAttendance, startRealTimeListener, diagnoseZk, syncDeviceTime };

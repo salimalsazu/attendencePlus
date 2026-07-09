@@ -1,6 +1,6 @@
 const router  = require('express').Router();
 const prisma   = require('../prismaClient');
-const { syncAttendance, diagnoseZk } = require('../zkService');
+const { syncAttendance, diagnoseZk, syncDeviceTime } = require('../zkService');
 
 // GET /api/devices
 router.get('/', async (req, res) => {
@@ -77,6 +77,16 @@ router.delete('/:id', async (req, res) => {
   try {
     await prisma.device.delete({ where: { deviceId: req.params.id } });
     res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/devices/sync-time — pushes server time (Asia/Dhaka) to the ZK device
+router.post('/sync-time', async (req, res) => {
+  try {
+    const result = await syncDeviceTime();
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

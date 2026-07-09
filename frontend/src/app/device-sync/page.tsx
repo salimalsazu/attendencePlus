@@ -31,6 +31,7 @@ import {
   IconCheck,
   IconChevronDown,
   IconChevronUp,
+  IconClock,
   IconDevices,
   IconDownload,
   IconEdit,
@@ -70,6 +71,7 @@ export default function DeviceSyncPage() {
   const [diagOpen, setDiagOpen]         = useState(false);
   const [diagLoading, setDiagLoading]   = useState(false);
   const [diagResult, setDiagResult]     = useState<Awaited<ReturnType<typeof api.zkDiagnostics>> | null>(null);
+  const [syncingClock, setSyncingClock] = useState(false);
 
   const addForm = useForm({
     initialValues: { deviceId: '', name: '', location: '', branch: '', ipAddress: '' },
@@ -207,6 +209,24 @@ export default function DeviceSyncPage() {
       notifications.show({ message: String(err), color: 'red' });
     } finally {
       setSavingDevice(false);
+    }
+  };
+
+  const syncDeviceClock = async () => {
+    setSyncingClock(true);
+    try {
+      const r = await api.syncDeviceTime();
+      notifications.show({
+        title: 'Device clock synced',
+        message: `Before: ${r.deviceTimeBefore ?? '?'} → After: ${r.deviceTimeAfter ?? '?'}`,
+        color: 'teal',
+        icon: <IconCheck size={16} />,
+        autoClose: 8000,
+      });
+    } catch (err) {
+      notifications.show({ message: String(err), color: 'red' });
+    } finally {
+      setSyncingClock(false);
     }
   };
 
@@ -349,6 +369,15 @@ export default function DeviceSyncPage() {
               onClick={runDiagnostics}
             >
               Test Connection
+            </Button>
+            <Button
+              variant="light"
+              color="teal"
+              leftSection={syncingClock ? <Loader size={13} /> : <IconClock size={14} />}
+              onClick={syncDeviceClock}
+              loading={syncingClock}
+            >
+              Sync Device Clock
             </Button>
             <Button
               leftSection={syncingId === 'ALL' ? <Loader size={13} color="white" /> : <IconRefresh size={14} />}

@@ -159,6 +159,12 @@ export const api = {
       steps: { step: string; ok: boolean; detail: { latencyMs?: number; detail?: string } }[];
     }>('/api/devices/diagnostics'),
 
+  syncDeviceTime: () =>
+    fetchJSON<{ ok: boolean; deviceTimeBefore: string | null; deviceTimeAfter: string | null; serverTime: string }>(
+      '/api/devices/sync-time',
+      { method: 'POST' },
+    ),
+
   // Manual attendance
   createManualPunch: (data: {
     deviceUserId: string;
