@@ -44,6 +44,7 @@ jobs:
             SMTP_USER=${{ secrets.SMTP_USER }}
             SMTP_PASS=${{ secrets.SMTP_PASS }}
             REPORT_RECEIVER_EMAIL=${{ secrets.REPORT_RECEIVER_EMAIL }}
+            SYNC_LOOKBACK_DAYS=7
             EOF
 
             echo "Building and restarting containers..."
