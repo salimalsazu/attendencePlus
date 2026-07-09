@@ -77,27 +77,34 @@ function decodeRecord40Hybrid(raw) {
   }
 
   // Unknown format fallback: scan bytes 20-36 for a plausible timestamp.
-  // We skip bytes 0-19 to avoid false positives from header/counter/userId bytes
-  // that happen to encode to a year in the plausible range (as seen with byte 7
-  // in the sequence counter area of Format 3). Starting at 20 is safe because
-  // all three known formats either have their timestamp at byte 3, 27, or 35 —
-  // none of which are missed by a scan starting at 20.
+  // We skip bytes 0-19 to avoid false positives from the header/counter/userId
+  // bytes that happen to encode to a year in the plausible range.
   if (!raw.every(b => b === 0)) {
+    // ZKTeco userIds are always numeric strings. If no known userId position
+    // (bytes 2-10, 10-18, 18-26) contains a numeric string, this is not an
+    // attendance record — it's likely a firmware-emitted metadata record (user
+    // info, fingerprint header, etc.) that arrived interleaved with attendance
+    // data. These started appearing after a firmware update in July 2026.
+    const uidCandidates = [raw.slice(2, 11), raw.slice(10, 19), raw.slice(18, 27)]
+      .map(s => s.toString('ascii').split('\0').shift().trim());
+    const validUid = uidCandidates.find(s => /^\d+$/.test(s));
+    if (!validUid) {
+      process.stdout.write(`[DECODER] Skipping non-attendance record (no numeric userId in known positions): ${raw.toString('hex')}\n`);
+      return { deviceUserId: '', recordTime: new Date(2000, 0, 1) };
+    }
+
     for (let off = 20; off <= 36; off++) {
       const t = raw.readUInt32LE(off);
       if (isPlausibleZkTime(t)) {
         const d = zkTimeToDate(t);
-        const uid = [raw.slice(2, 11), raw.slice(10, 19), raw.slice(18, 27)]
-          .map(s => s.toString('ascii').split('\0').shift().trim())
-          .find(s => s.length > 0) || '';
         process.stdout.write(
-          `[DECODER] ⚠ New record format auto-detected — timestamp at offset ${off} → ${d.toLocaleString()} userId="${uid}" raw=${raw.toString('hex')}\n`
+          `[DECODER] ⚠ New record format auto-detected — timestamp at offset ${off} → ${d.toLocaleString()} userId="${validUid}" raw=${raw.toString('hex')}\n`
         );
-        return { deviceUserId: uid, recordTime: d };
+        return { deviceUserId: validUid, recordTime: d };
       }
     }
-    // Truly unrecognisable — log the raw bytes so the format can be analysed
-    process.stdout.write(`[DECODER] ⚠ Unrecognised non-zero record (no plausible timestamp at offsets 20-36): ${raw.toString('hex')}\n`);
+    // Has a valid numeric userId but no plausible timestamp — log for analysis
+    process.stdout.write(`[DECODER] ⚠ Unrecognised non-zero record (numeric userId but no timestamp at offsets 20-36): ${raw.toString('hex')}\n`);
   }
 
   return { deviceUserId: '', recordTime: new Date(2000, 0, 1) };
