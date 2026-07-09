@@ -76,9 +76,28 @@ function decodeRecord40Hybrid(raw) {
     return { deviceUserId: userId || '', recordTime: zkTimeToDate(t3), type };
   }
 
-  // Log unknown non-zero records for future analysis
+  // Unknown format fallback: scan bytes 20-36 for a plausible timestamp.
+  // We skip bytes 0-19 to avoid false positives from header/counter/userId bytes
+  // that happen to encode to a year in the plausible range (as seen with byte 7
+  // in the sequence counter area of Format 3). Starting at 20 is safe because
+  // all three known formats either have their timestamp at byte 3, 27, or 35 —
+  // none of which are missed by a scan starting at 20.
   if (!raw.every(b => b === 0)) {
-    process.stdout.write(`[DECODER] Unknown non-zero record format: ${raw.toString('hex')}\n`);
+    for (let off = 20; off <= 36; off++) {
+      const t = raw.readUInt32LE(off);
+      if (isPlausibleZkTime(t)) {
+        const d = zkTimeToDate(t);
+        const uid = [raw.slice(2, 11), raw.slice(10, 19), raw.slice(18, 27)]
+          .map(s => s.toString('ascii').split('\0').shift().trim())
+          .find(s => s.length > 0) || '';
+        process.stdout.write(
+          `[DECODER] ⚠ New record format auto-detected — timestamp at offset ${off} → ${d.toLocaleString()} userId="${uid}" raw=${raw.toString('hex')}\n`
+        );
+        return { deviceUserId: uid, recordTime: d };
+      }
+    }
+    // Truly unrecognisable — log the raw bytes so the format can be analysed
+    process.stdout.write(`[DECODER] ⚠ Unrecognised non-zero record (no plausible timestamp at offsets 20-36): ${raw.toString('hex')}\n`);
   }
 
   return { deviceUserId: '', recordTime: new Date(2000, 0, 1) };
