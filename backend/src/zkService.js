@@ -27,56 +27,58 @@ function zkTimeToDate(t) {
   return new Date(t + 2000, month, day, hour, minute, second);
 }
 
-// Plausible ZK timestamp: must decode to a year between 2010 and 2035.
+// Plausible ZK timestamp: year must decode to 2015–2035.
 function isPlausibleZkTime(t) {
   if (!t || t === 0) return false;
   const yr = zkTimeToDate(t).getFullYear();
-  return yr >= 2010 && yr <= 2035;
+  return yr >= 2015 && yr <= 2035;
 }
 
 /**
- * Hybrid 40-byte record decoder.
+ * Hybrid 40-byte record decoder — handles three layouts seen on this device:
  *
- * Known formats on this device:
- *   - Old format: userId ASCII at bytes 2-10, timestamp UInt32LE at byte 27.
- *   - New format: timestamp UInt32LE at byte 3, userId ASCII at bytes 18-26.
+ *  Format 1 (standard/old):
+ *    bytes  2-10: userId ASCII
+ *    byte  27-30: timestamp UInt32LE
  *
- * If neither known position has a plausible timestamp, we scan all UInt32LE
- * offsets 0-36 and log the first match. This auto-detects a third format if
- * the device firmware introduced one.
+ *  Format 2 (post-log-reorganisation):
+ *    bytes 18-26: userId ASCII
+ *    bytes  3- 6: timestamp UInt32LE
+ *
+ *  Format 3 (new records, observed July 2026+):
+ *    bytes  8- 9: internal sequence counter (ignored)
+ *    bytes 10-18: userId ASCII, null-terminated
+ *    byte     34: punch type
+ *    bytes 35-38: timestamp UInt32LE
+ *
+ * Entirely-zero records are deleted/empty slots — returned with a Jan-2000 date
+ * so the cutoff filter silently drops them.
  */
 function decodeRecord40Hybrid(raw) {
-  const timeOld = raw.readUInt32LE(27);
-  if (isPlausibleZkTime(timeOld)) {
+  // Format 1
+  const t1 = raw.readUInt32LE(27);
+  if (isPlausibleZkTime(t1)) {
     return decodeRecordData40(raw);
   }
 
-  const timeNew = raw.readUInt32LE(3);
-  if (isPlausibleZkTime(timeNew)) {
-    const userId = raw.slice(18, 18 + 9).toString('ascii').split('\0').shift();
-    return { deviceUserId: userId || '', recordTime: zkTimeToDate(timeNew) };
+  // Format 2
+  const t2 = raw.readUInt32LE(3);
+  if (isPlausibleZkTime(t2)) {
+    const userId = raw.slice(18, 27).toString('ascii').split('\0').shift();
+    return { deviceUserId: userId || '', recordTime: zkTimeToDate(t2) };
   }
 
-  // Neither known offset has a plausible timestamp.
-  // If the record is entirely zeros it is a deleted/empty slot — skip it.
-  // Otherwise scan all offsets to detect a new format and log for analysis.
-  const isAllZero = raw.every(b => b === 0);
-  if (!isAllZero) {
-    for (let off = 0; off <= 36; off++) {
-      const t = raw.readUInt32LE(off);
-      if (isPlausibleZkTime(t)) {
-        const d = zkTimeToDate(t);
-        // Try known userId positions
-        const uid = raw.slice(2, 11).toString('ascii').split('\0')[0].trim() ||
-                    raw.slice(18, 27).toString('ascii').split('\0')[0].trim();
-        process.stdout.write(
-          `[FORMAT-SCAN] New record format detected — timestamp at offset ${off} → ${d.toLocaleString()} | userId="${uid}" | hex: ${raw.toString('hex')}\n`
-        );
-        return { deviceUserId: uid, recordTime: d };
-      }
-    }
-    // Log unknown non-zero records so we can inspect the raw bytes
-    process.stdout.write(`[FORMAT-SCAN] Unrecognised record (non-zero, no plausible timestamp): ${raw.toString('hex')}\n`);
+  // Format 3
+  const t3 = raw.readUInt32LE(35);
+  if (isPlausibleZkTime(t3)) {
+    const userId = raw.slice(10, 19).toString('ascii').split('\0').shift().trim();
+    const type   = raw.readUInt8(34);
+    return { deviceUserId: userId || '', recordTime: zkTimeToDate(t3), type };
+  }
+
+  // Log unknown non-zero records for future analysis
+  if (!raw.every(b => b === 0)) {
+    process.stdout.write(`[DECODER] Unknown non-zero record format: ${raw.toString('hex')}\n`);
   }
 
   return { deviceUserId: '', recordTime: new Date(2000, 0, 1) };
