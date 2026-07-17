@@ -152,7 +152,7 @@ async function sendDailyReportEmail({ date = new Date(), to } = {}) {
 
   const transporter = getTransporter();
   const info = await transporter.sendMail({
-    from: `"AttendTrack Pro" <${process.env.SMTP_USER}>`,
+    from: `"AttendTrack Pro" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
     to: recipient,
     subject: `Daily Attendance Report — ${fmtDate(report.date)}`,
     html,
